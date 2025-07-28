@@ -266,7 +266,6 @@ public class AuthController : ControllerBase
                 "<h1>🎉 Email Service Working!</h1><p>Your SMTP configuration is successful.</p><p>This test was sent from your GloHorizon API.</p>", 
                 true
             );
-
             if (result.Success)
             {
                 return Ok(new { message = "Email sent successfully!", recipient = toEmail });

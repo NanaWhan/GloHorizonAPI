@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GloHorizonApi")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+aceaca8a5d0cd8b99dca51684e0454be2c1efe66")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+55a153627ab7935fa89870e7a3e8a292cffd0ed5")]
 [assembly: System.Reflection.AssemblyProductAttribute("GloHorizonApi")]
 [assembly: System.Reflection.AssemblyTitleAttribute("GloHorizonApi")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
