@@ -1,6 +1,0 @@
-@GloHorizonApi_HostAddress = http://localhost:5080
-
-GET {{GloHorizonApi_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
