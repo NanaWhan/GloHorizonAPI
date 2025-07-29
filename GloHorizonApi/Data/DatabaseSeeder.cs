@@ -28,10 +28,6 @@ public static class DatabaseSeeder
 
             context.Admins.Add(superAdmin);
             await context.SaveChangesAsync();
-            
-            Console.WriteLine("SuperAdmin created successfully!");
-            Console.WriteLine($"Email: {superAdmin.Email}");
-            Console.WriteLine("Password: Admin123!");
         }
         else
         {
