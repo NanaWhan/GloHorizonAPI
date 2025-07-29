@@ -18,17 +18,30 @@ public class PaymentController : ControllerBase
     private readonly IPayStackPaymentService _payStackService;
     private readonly ILogger<PaymentController> _logger;
     private readonly ActorSystem _actorSystem;
+    private readonly IConfiguration _configuration;
 
     public PaymentController(
         ApplicationDbContext context,
         IPayStackPaymentService payStackService,
         ILogger<PaymentController> logger,
-        ActorSystem actorSystem)
+        ActorSystem actorSystem,
+        IConfiguration configuration)
     {
         _context = context;
         _payStackService = payStackService;
         _logger = logger;
         _actorSystem = actorSystem;
+        _configuration = configuration;
+    }
+
+    private string GetFrontendBaseUrl()
+    {
+        // Determine if we're in development or production
+        var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+        
+        return isDevelopment 
+            ? _configuration.GetValue<string>("FrontendUrls:DevelopmentBaseUrl") ?? "http://localhost:3000"
+            : _configuration.GetValue<string>("FrontendUrls:ProductionBaseUrl") ?? "https://yourfrontend.com";
     }
 
     /// <summary>
@@ -162,6 +175,66 @@ public class PaymentController : ControllerBase
         {
             _logger.LogError(ex, "Error processing PayStack webhook");
             return StatusCode(500, "Internal server error");
+        }
+    }
+
+    /// <summary>
+    /// PayStack callback endpoint - where users are redirected after payment
+    /// </summary>
+    [HttpGet("callback")]
+    public async Task<IActionResult> PaymentCallback([FromQuery] string reference, [FromQuery] string? trxref)
+    {
+        try
+        {
+            _logger.LogInformation("Payment callback received for reference: {Reference}", reference);
+
+            if (string.IsNullOrEmpty(reference))
+            {
+                _logger.LogWarning("Payment callback received without reference");
+                // Redirect to error page
+                var frontendBaseUrl = GetFrontendBaseUrl();
+                return Redirect($"{frontendBaseUrl}/payment/error?reason=missing-reference");
+            }
+
+            // Find the booking
+            var booking = await _context.BookingRequests
+                .Include(b => b.User)
+                .FirstOrDefaultAsync(b => b.ReferenceNumber == reference);
+
+            if (booking == null)
+            {
+                _logger.LogWarning("Booking not found for reference: {Reference}", reference);
+                // Redirect to error page
+                var frontendBaseUrl = GetFrontendBaseUrl();
+                return Redirect($"{frontendBaseUrl}/payment/error?reason=booking-not-found&ref={reference}");
+            }
+
+            // Verify payment with PayStack
+            var verification = await _payStackService.VerifyTransactionAsync(reference);
+
+            if (verification != null && verification.Status && verification.Data.Status == "success")
+            {
+                _logger.LogInformation("Payment successful for reference: {Reference}", reference);
+                
+                // Redirect to success page with booking details
+                var frontendBaseUrl = GetFrontendBaseUrl();
+                return Redirect($"{frontendBaseUrl}/payment/success?ref={reference}&service={booking.ServiceType}&customer={Uri.EscapeDataString(booking.User.FullName)}");
+            }
+            else
+            {
+                _logger.LogWarning("Payment verification failed or payment was unsuccessful for reference: {Reference}", reference);
+                
+                // Redirect to failure page
+                var frontendBaseUrl = GetFrontendBaseUrl();
+                return Redirect($"{frontendBaseUrl}/payment/failed?ref={reference}&reason=payment-failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing payment callback for reference: {Reference}", reference);
+            // Redirect to error page
+            var frontendBaseUrl = GetFrontendBaseUrl();
+            return Redirect($"{frontendBaseUrl}/payment/error?reason=server-error&ref={reference}");
         }
     }
 

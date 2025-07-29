@@ -46,6 +46,13 @@ public class PayStackPaymentService : IPayStackPaymentService
             // Convert amount to kobo (smallest currency unit)
             var ticketPrice = decimal.Multiply(request.Amount, 100);
 
+            // Use appropriate callback URL based on which key is being used
+            var isLiveMode = PayStackApi.ToString().Contains("live") || 
+                           _configuration.GetValue<string>("PayStackKeys:live_key")?.Contains(PayStackApi.ToString()) == true;
+            var callbackUrl = isLiveMode 
+                ? _configuration.GetValue<string>("PayStackKeys:prod_callback")
+                : _configuration.GetValue<string>("PayStackKeys:test_callback");
+
             TransactionInitializeRequest payStackRequest = new()
             {
                 Currency = "GHS",
@@ -53,7 +60,7 @@ public class PayStackPaymentService : IPayStackPaymentService
                 Channels = new[] { "mobile_money", "card" },
                 AmountInKobo = decimal.ToInt32(ticketPrice),
                 Reference = request.ClientReference,
-                CallbackUrl = _configuration.GetValue<string>("PayStackKeys:prod_callback")
+                CallbackUrl = callbackUrl
             };
 
             // Add custom fields if needed

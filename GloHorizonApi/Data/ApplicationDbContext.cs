@@ -19,6 +19,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<BookingStatusHistory> BookingStatusHistories { get; set; }
     public DbSet<TravelPackage> TravelPackages { get; set; }
     public DbSet<Discount> Discounts { get; set; }
+    public DbSet<OtpVerification> OtpVerifications { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -59,6 +60,12 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<TravelPackage>()
             .HasIndex(p => new { p.IsActive, p.IsFeatured, p.DisplayOrder });
+
+        modelBuilder.Entity<OtpVerification>()
+            .HasIndex(o => new { o.PhoneNumber, o.CreatedAt });
+
+        modelBuilder.Entity<OtpVerification>()
+            .HasIndex(o => o.ExpiresAt);
 
         // Configure decimal precision
         modelBuilder.Entity<BookingRequest>()

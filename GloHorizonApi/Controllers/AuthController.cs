@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using System.ComponentModel.DataAnnotations;
 using GloHorizonApi.Data;
 using GloHorizonApi.Models.DomainModels;
 using GloHorizonApi.Models.Dtos.Auth;
 using GloHorizonApi.Services.Providers;
 using GloHorizonApi.Services.Interfaces;
 using BCrypt.Net;
+using System.Linq;
 
 namespace GloHorizonApi.Controllers;
 
@@ -16,18 +19,24 @@ public class AuthController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly JwtTokenGenerator _jwtTokenGenerator;
     private readonly IEmailService _emailService;
+    private readonly ISmsService _smsService;
     private readonly ILogger<AuthController> _logger;
+    private readonly IConfiguration _configuration;
 
     public AuthController(
         ApplicationDbContext context,
         JwtTokenGenerator jwtTokenGenerator,
         IEmailService emailService,
-        ILogger<AuthController> logger)
+        ISmsService smsService,
+        ILogger<AuthController> logger,
+        IConfiguration configuration)
     {
         _context = context;
         _jwtTokenGenerator = jwtTokenGenerator;
         _emailService = emailService;
+        _smsService = smsService;
         _logger = logger;
+        _configuration = configuration;
     }
 
     [HttpPost("register")]
@@ -150,35 +159,70 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("request-otp")]
-    public Task<ActionResult<OtpResponse>> RequestOtp([FromBody] OtpLoginRequest request)
+    public async Task<ActionResult<OtpResponse>> RequestOtp([FromBody] OtpLoginRequest request)
     {
         try
         {
+            // Invalidate any existing OTPs for this phone number
+            var existingOtps = await _context.OtpVerifications
+                .Where(o => o.PhoneNumber == request.PhoneNumber && 
+                           !o.IsUsed && 
+                           DateTime.UtcNow <= o.ExpiresAt && 
+                           o.AttemptCount < 3)
+                .ToListAsync();
+
+            foreach (var otp in existingOtps)
+            {
+                otp.IsUsed = true;
+                otp.UsedAt = DateTime.UtcNow;
+            }
+
             // Generate 6-digit OTP
             var otpCode = new Random().Next(100000, 999999).ToString();
             
-            // TODO: Send OTP via SMS (integrate with mnotify)
+            // Create OTP verification record
+            var otpVerification = new OtpVerification
+            {
+                PhoneNumber = request.PhoneNumber,
+                OtpCode = otpCode,
+                CreatedAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(10)
+            };
+
+            _context.OtpVerifications.Add(otpVerification);
+            await _context.SaveChangesAsync();
+
+            // Send OTP via SMS
+            var smsResult = await _smsService.SendOtpAsync(request.PhoneNumber, otpCode);
+            
+            if (!smsResult.Success)
+            {
+                _logger.LogError($"Failed to send OTP SMS to {request.PhoneNumber}: {smsResult.Error}");
+                return StatusCode(500, new OtpResponse
+                {
+                    Success = false,
+                    Message = "Failed to send OTP. Please try again."
+                });
+            }
+
             // For development, log the OTP (remove in production)
             _logger.LogInformation($"OTP for {request.PhoneNumber}: {otpCode}");
 
-            // TODO: Store OTP in cache/database for verification
-            // For now, return success response
-            
-            return Task.FromResult<ActionResult<OtpResponse>>(Ok(new OtpResponse
+            return Ok(new OtpResponse
             {
                 Success = true,
                 Message = "OTP sent successfully to your phone",
-                OtpId = Guid.NewGuid().ToString() // Tracking ID for this OTP session
-            }));
+                OtpId = otpVerification.Id
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error sending OTP");
-            return Task.FromResult<ActionResult<OtpResponse>>(StatusCode(500, new OtpResponse
+            _logger.LogError(ex, "Error sending OTP to {PhoneNumber}: {ErrorMessage}", request.PhoneNumber, ex.Message);
+            return StatusCode(500, new OtpResponse
             {
                 Success = false,
-                Message = "Failed to send OTP. Please try again."
-            }));
+                Message = $"Failed to send OTP. Error: {ex.Message}"
+            });
         }
     }
 
@@ -187,8 +231,6 @@ public class AuthController : ControllerBase
     {
         try
         {
-            // TODO: Verify OTP against stored value
-            // For development, accept any 6-digit code
             if (request.OtpCode.Length != 6 || !request.OtpCode.All(char.IsDigit))
             {
                 return BadRequest(new AuthResponse
@@ -197,6 +239,65 @@ public class AuthController : ControllerBase
                     Message = "Invalid OTP code. Please enter a 6-digit code."
                 });
             }
+
+            // Find the OTP verification record
+            var otpVerification = await _context.OtpVerifications
+                .FirstOrDefaultAsync(o => o.PhoneNumber == request.PhoneNumber && 
+                                        o.OtpCode == request.OtpCode && 
+                                        !o.IsUsed && 
+                                        DateTime.UtcNow <= o.ExpiresAt && 
+                                        o.AttemptCount < 3);
+
+            if (otpVerification == null)
+            {
+                // Increment attempt count for existing OTPs
+                var existingOtps = await _context.OtpVerifications
+                    .Where(o => o.PhoneNumber == request.PhoneNumber && !o.IsUsed && !o.IsExpired)
+                    .ToListAsync();
+
+                foreach (var otp in existingOtps)
+                {
+                    otp.AttemptCount++;
+                }
+                await _context.SaveChangesAsync();
+
+                return BadRequest(new AuthResponse
+                {
+                    Success = false,
+                    Message = "Invalid or expired OTP code."
+                });
+            }
+
+            if (otpVerification.IsExpired)
+            {
+                return BadRequest(new AuthResponse
+                {
+                    Success = false,
+                    Message = "OTP has expired. Please request a new one."
+                });
+            }
+
+            if (otpVerification.IsUsed)
+            {
+                return BadRequest(new AuthResponse
+                {
+                    Success = false,
+                    Message = "OTP has already been used."
+                });
+            }
+
+            if (otpVerification.AttemptCount >= 3)
+            {
+                return BadRequest(new AuthResponse
+                {
+                    Success = false,
+                    Message = "Too many failed attempts. Please request a new OTP."
+                });
+            }
+
+            // Mark OTP as used
+            otpVerification.IsUsed = true;
+            otpVerification.UsedAt = DateTime.UtcNow;
 
             // Find or create user by phone number
             var user = await _context.Users
@@ -255,66 +356,5 @@ public class AuthController : ControllerBase
         }
     }
 
-    [HttpPost("test-email")]
-    public async Task<IActionResult> TestEmail([FromBody] string toEmail)
-    {
-        try
-        {
-            var result = await _emailService.SendEmailAsync(
-                toEmail, 
-                "Test Email - GloHorizon", 
-                "<h1>🎉 Email Service Working!</h1><p>Your SMTP configuration is successful.</p><p>This test was sent from your GloHorizon API.</p>", 
-                true
-            );
-            if (result.Success)
-            {
-                return Ok(new { message = "Email sent successfully!", recipient = toEmail });
-            }
-            else
-            {
-                return BadRequest(new { error = result.Error });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send test email to {Email}", toEmail);
-            return StatusCode(500, new { error = ex.Message });
-        }
-    }
 
-    [HttpPost("test-booking-confirmation")]
-    public async Task<IActionResult> TestBookingConfirmation([FromBody] BookingTestRequest request)
-    {
-        try
-        {
-            var result = await _emailService.SendBookingConfirmationAsync(
-                request.ToEmail,
-                request.CustomerName,
-                request.ReferenceNumber,
-                request.ServiceType
-            );
-
-            if (result.Success)
-            {
-                return Ok(new { message = "Booking confirmation email sent!", recipient = request.ToEmail });
-            }
-            else
-            {
-                return BadRequest(new { error = result.Error });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send booking confirmation to {Email}", request.ToEmail);
-            return StatusCode(500, new { error = ex.Message });
-        }
-    }
-
-    public class BookingTestRequest
-    {
-        public string ToEmail { get; set; } = string.Empty;
-        public string CustomerName { get; set; } = string.Empty;
-        public string ReferenceNumber { get; set; } = string.Empty;
-        public string ServiceType { get; set; } = string.Empty;
-    }
 } 

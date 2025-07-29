@@ -1,23 +1,52 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using GloHorizonApi.Services.Interfaces;
 
 namespace GloHorizonApi.Services.Providers;
 
 public class MnotifySmsService : ISmsService
 {
-    private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
     private readonly ILogger<MnotifySmsService> _logger;
 
     public MnotifySmsService(
-        HttpClient httpClient,
         IConfiguration configuration,
         ILogger<MnotifySmsService> logger)
     {
-        _httpClient = httpClient;
         _configuration = configuration;
         _logger = logger;
+    }
+
+    public async Task<bool> TestApiKeyAsync()
+    {
+        try
+        {
+            var apiKey = _configuration.GetValue<string>("MnotifySettings:ApiKey");
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                _logger.LogWarning("Mnotify API key not configured");
+                return false;
+            }
+
+            // Test with a simple message like in RamadanApi
+            var testMessage = Uri.EscapeDataString("API Key Test");
+            var requestUrl = $"https://apps.mnotify.net/smsapi?key={apiKey}&to=+233000000000&msg={testMessage}&sender_id=Test";
+
+            using var httpClient = new HttpClient();
+            var response = await httpClient.GetAsync(requestUrl);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            _logger.LogInformation("API Key test response: {Status} - {Content}", response.StatusCode, responseContent);
+
+            // If we get any response (even error), it means the endpoint is reachable
+            return response.StatusCode != System.Net.HttpStatusCode.Unauthorized;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to test API key");
+            return false;
+        }
     }
 
     public async Task<SmsResponse> SendSmsAsync(string phoneNumber, string message)
@@ -36,50 +65,42 @@ public class MnotifySmsService : ISmsService
                 };
             }
 
-            var payload = new
-            {
-                key = apiKey,
-                to = FormatPhoneNumber(phoneNumber),
-                msg = message,
-                sender_id = senderId
-            };
+            _logger.LogInformation("Sending SMS to {PhoneNumber} with message: {Message}", phoneNumber, message);
 
-            var jsonContent = JsonSerializer.Serialize(payload);
-            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+            // Using the same approach as RamadanApi - simple GET request with query parameters
+            var formattedPhone = FormatPhoneNumber(phoneNumber);
+            var encodedMessage = Uri.EscapeDataString(message);
+            var requestUrl = $"https://apps.mnotify.net/smsapi?key={apiKey}&to={formattedPhone}&msg={encodedMessage}&sender_id={senderId}";
 
-            var response = await _httpClient.PostAsync("https://apps.mnotify.net/smsapi", content);
+            _logger.LogInformation("mNotify request URL: {RequestUrl}", requestUrl.Replace(apiKey, "***API_KEY***"));
+
+            using var httpClient = new HttpClient();
+            var response = await httpClient.GetAsync(requestUrl);
             var responseContent = await response.Content.ReadAsStringAsync();
 
-            _logger.LogInformation($"Mnotify SMS response: {responseContent}");
+            _logger.LogInformation("mNotify SMS response - Status: {StatusCode}, Content: {Content}", 
+                response.StatusCode, responseContent);
 
             if (response.IsSuccessStatusCode)
             {
-                var mnotifyResponse = JsonSerializer.Deserialize<MnotifyResponse>(responseContent);
+                _logger.LogInformation("SMS sent successfully to {PhoneNumber}", phoneNumber);
                 
-                if (mnotifyResponse?.Code == "1000")
+                return new SmsResponse
                 {
-                    return new SmsResponse
-                    {
-                        Success = true,
-                        Message = "SMS sent successfully",
-                        MessageId = mnotifyResponse.MessageId
-                    };
-                }
-                else
-                {
-                    return new SmsResponse
-                    {
-                        Success = false,
-                        Error = mnotifyResponse?.Message ?? "Unknown error from Mnotify"
-                    };
-                }
+                    Success = true,
+                    Message = "SMS sent successfully",
+                    MessageId = Guid.NewGuid().ToString() // Generate a simple ID
+                };
             }
             else
             {
+                _logger.LogError("Failed to send SMS - Status: {StatusCode}, Response: {Content}", 
+                    response.StatusCode, responseContent);
+                
                 return new SmsResponse
                 {
                     Success = false,
-                    Error = $"HTTP Error: {response.StatusCode}"
+                    Error = $"SMS failed: {response.StatusCode} - {responseContent}"
                 };
             }
         }
@@ -89,7 +110,7 @@ public class MnotifySmsService : ISmsService
             return new SmsResponse
             {
                 Success = false,
-                Error = "Failed to send SMS"
+                Error = $"SMS error: {ex.Message}"
             };
         }
     }
@@ -114,26 +135,33 @@ public class MnotifySmsService : ISmsService
 
     private static string FormatPhoneNumber(string phoneNumber)
     {
+        if (string.IsNullOrEmpty(phoneNumber))
+            return phoneNumber;
+
         // Remove any spaces, dashes, or other formatting
-        var cleaned = phoneNumber.Replace(" ", "").Replace("-", "").Replace("(", "").Replace(")", "");
+        var cleaned = phoneNumber.Replace(" ", "").Replace("-", "").Replace("(", "").Replace(")", "").Replace("+", "");
         
-        // Ensure Ghana country code format
-        if (cleaned.StartsWith("0"))
+        // Handle different country codes and formats
+        if (cleaned.StartsWith("233")) // Already has Ghana country code without +
         {
-            cleaned = "+233" + cleaned.Substring(1);
+            return "+" + cleaned;
         }
-        else if (!cleaned.StartsWith("+233"))
+        else if (cleaned.StartsWith("0")) // Local Ghana number
         {
-            cleaned = "+233" + cleaned;
+            return "+233" + cleaned.Substring(1);
         }
-
-        return cleaned;
+        else if (cleaned.Length == 9 && cleaned.All(char.IsDigit)) // 9-digit Ghana number without leading 0
+        {
+            return "+233" + cleaned;
+        }
+        else if (phoneNumber.StartsWith("+")) // International format already
+        {
+            return phoneNumber.Replace(" ", "").Replace("-", "").Replace("(", "").Replace(")", "");
+        }
+        else
+        {
+            // Default to Ghana country code for unrecognized formats
+            return "+233" + cleaned;
+        }
     }
-}
-
-public class MnotifyResponse
-{
-    public string Code { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty;
-    public string MessageId { get; set; } = string.Empty;
 } 

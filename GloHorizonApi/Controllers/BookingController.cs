@@ -3,9 +3,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
+using Akka.Actor;
 using GloHorizonApi.Data;
 using GloHorizonApi.Models.DomainModels;
 using GloHorizonApi.Models.Dtos.Booking;
+using GloHorizonApi.Actors;
 
 namespace GloHorizonApi.Controllers;
 
@@ -16,13 +18,16 @@ public class BookingController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<BookingController> _logger;
+    private readonly ActorSystem _actorSystem;
 
     public BookingController(
         ApplicationDbContext context,
-        ILogger<BookingController> logger)
+        ILogger<BookingController> logger,
+        ActorSystem actorSystem)
     {
         _context = context;
         _logger = logger;
+        _actorSystem = actorSystem;
     }
 
     [HttpPost("submit")]
@@ -85,8 +90,29 @@ public class BookingController : ControllerBase
             _context.BookingStatusHistories.Add(statusHistory);
             await _context.SaveChangesAsync();
 
-            // TODO: Send admin notifications (email/SMS)
-            // This will be implemented with actor system
+            // Send admin notifications via actor system
+            try
+            {
+                var bookingActor = _actorSystem.ActorSelection("/user/booking-notification-actor");
+                var notificationMessage = new NewBookingMessage
+                {
+                    ReferenceNumber = referenceNumber,
+                    CustomerName = user.FullName,
+                    CustomerEmail = user.Email,
+                    CustomerPhone = user.PhoneNumber,
+                    ServiceType = request.ServiceType,
+                    Urgency = UrgencyLevel.Standard
+                };
+                
+                bookingActor.Tell(notificationMessage);
+                _logger.LogInformation($"Admin notification sent for booking: {referenceNumber}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Failed to send admin notification for booking: {referenceNumber}");
+                // Don't fail the booking if notification fails
+            }
+            
             _logger.LogInformation($"New booking submitted: {referenceNumber} by user {userId}");
 
             return Ok(new BookingResponse
