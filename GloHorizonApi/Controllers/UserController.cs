@@ -108,9 +108,7 @@ public class UserController : ControllerBase
                 user.PhoneVerified = false; // Require re-verification if phone changes
             }
 
-            var nameParts = request.FullName.Trim().Split(' ', 2);
-            user.FirstName = nameParts[0];
-            user.LastName = nameParts.Length > 1 ? nameParts[1] : "";
+            user.FullName = request.FullName.Trim();
             
             await _context.SaveChangesAsync();
 
@@ -240,8 +238,7 @@ public class UserController : ControllerBase
             // Soft delete user account
             user.Email = $"deleted_{user.Id}@deleted.com";
             user.PhoneNumber = $"deleted_{user.Id}";
-            user.FirstName = "Deleted";
-            user.LastName = "User";
+            user.FullName = "Deleted User";
             user.PasswordHash = "";
             
             await _context.SaveChangesAsync();

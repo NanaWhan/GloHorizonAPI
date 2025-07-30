@@ -8,15 +8,12 @@ public class User
     public string Id { get; set; } = Guid.NewGuid().ToString();
     
     [Required]
-    [MaxLength(50)]
-    public string FirstName { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string FullName { get; set; } = string.Empty;
     
-    [Required]
-    [MaxLength(50)]
-    public string LastName { get; set; } = string.Empty;
-    
-    // Computed property for full name
-    public string FullName => $"{FirstName} {LastName}".Trim();
+    // Computed properties for compatibility
+    public string FirstName => FullName.Split(' ', 2).FirstOrDefault() ?? "";
+    public string LastName => FullName.Split(' ', 2).Skip(1).FirstOrDefault() ?? "";
     
     [Required]
     [EmailAddress]
@@ -34,20 +31,12 @@ public class User
     public bool EmailVerified { get; set; } = false;
     public bool PhoneVerified { get; set; } = false;
     
-    // Profile information
-    [MaxLength(500)]
-    public string? ProfileImageUrl { get; set; }
-    
-    [MaxLength(200)]
-    public string? Address { get; set; }
-    
-    [MaxLength(100)]
-    public string? City { get; set; }
-    
-    [MaxLength(100)]
-    public string? Country { get; set; }
-    
-    public DateTime? DateOfBirth { get; set; }
+    // Profile information (to be added later with migration)
+    // public string? ProfileImageUrl { get; set; }
+    // public string? Address { get; set; }
+    // public string? City { get; set; }
+    // public string? Country { get; set; }
+    // public DateTime? DateOfBirth { get; set; }
     
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastLoginAt { get; set; }

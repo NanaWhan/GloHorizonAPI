@@ -39,6 +39,8 @@ builder.Services.AddSingleton(provider => new Supabase.Client(url, supabsekey, o
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnectionString")));
 
+// Redis removed - using database-only OTP approach
+
 // Configure HttpClient
 builder.Services.AddHttpClient();
 
@@ -50,11 +52,18 @@ builder.Services.AddScoped<JwtTokenGenerator>();
 builder.Services.AddScoped<ISmsService, MnotifySmsService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 
+// Register OTP service (Database only)
+builder.Services.AddScoped<IOtpService, DatabaseOtpService>();
+
 // Register image upload service (using Supabase Storage)
 builder.Services.AddScoped<IImageUploadService, SupabaseImageUploadService>();
 
-// Register background services (following RamadanApi pattern)
-builder.Services.AddHostedService<PaymentVerificationService>();
+// Register background services
+// Temporarily disabled until database schema is updated
+// builder.Services.AddHostedService<PaymentVerificationService>();
+
+// Register OTP cleanup service
+builder.Services.AddHostedService<OtpCleanupService>();
 
 // Configure Akka.NET actor system
 builder.Services.AddActorSystem("glohorizon-actor-system");
@@ -131,23 +140,25 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// Seed the database with initial data
+// Apply database migrations and seed data
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    
+    // Apply pending migrations
+    await dbContext.Database.MigrateAsync();
+    
+    // Seed the database with initial data
     await DatabaseSeeder.SeedAdminAsync(dbContext);
 }
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Global Horizons Travel API v1");
-        c.RoutePrefix = string.Empty; // Makes Swagger the default page
-    });
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Global Horizons Travel API v1");
+    c.RoutePrefix = string.Empty; // Makes Swagger the default page
+});
 
 // Only use HTTPS redirection outside development
 if (!app.Environment.IsDevelopment())

@@ -20,6 +20,7 @@ public class AuthController : ControllerBase
     private readonly JwtTokenGenerator _jwtTokenGenerator;
     private readonly IEmailService _emailService;
     private readonly ISmsService _smsService;
+    private readonly IOtpService _otpService;
     private readonly ILogger<AuthController> _logger;
     private readonly IConfiguration _configuration;
 
@@ -28,6 +29,7 @@ public class AuthController : ControllerBase
         JwtTokenGenerator jwtTokenGenerator,
         IEmailService emailService,
         ISmsService smsService,
+        IOtpService otpService,
         ILogger<AuthController> logger,
         IConfiguration configuration)
     {
@@ -35,6 +37,7 @@ public class AuthController : ControllerBase
         _jwtTokenGenerator = jwtTokenGenerator;
         _emailService = emailService;
         _smsService = smsService;
+        _otpService = otpService;
         _logger = logger;
         _configuration = configuration;
     }
@@ -70,11 +73,9 @@ public class AuthController : ControllerBase
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
             // Create new user
-            var nameParts = request.FullName.Trim().Split(' ', 2);
             var user = new User
             {
-                FirstName = nameParts[0],
-                LastName = nameParts.Length > 1 ? nameParts[1] : "",
+                FullName = request.FullName.Trim(),
                 Email = request.Email,
                 PhoneNumber = request.PhoneNumber,
                 PasswordHash = passwordHash,
@@ -190,40 +191,18 @@ public class AuthController : ControllerBase
                     Message = string.Join("; ", errors)
                 });
             }
-            // Invalidate any existing OTPs for this phone number
-            var existingOtps = await _context.OtpVerifications
-                .Where(o => o.PhoneNumber == request.PhoneNumber && 
-                           !o.IsUsed && 
-                           DateTime.UtcNow <= o.ExpiresAt && 
-                           o.AttemptCount < 3)
-                .ToListAsync();
 
-            foreach (var otp in existingOtps)
-            {
-                otp.IsUsed = true;
-                otp.UsedAt = DateTime.UtcNow;
-            }
-
-            // Generate 6-digit OTP
-            var otpCode = new Random().Next(100000, 999999).ToString();
-            
-            // Create OTP verification record
-            var otpVerification = new OtpVerification
-            {
-                PhoneNumber = request.PhoneNumber,
-                OtpCode = otpCode,
-                CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(10)
-            };
-
-            _context.OtpVerifications.Add(otpVerification);
-            await _context.SaveChangesAsync();
+            // Generate OTP using Redis service
+            var otpCode = await _otpService.GenerateOtpAsync(request.PhoneNumber, 10);
 
             // Send OTP via SMS
             var smsResult = await _smsService.SendOtpAsync(request.PhoneNumber, otpCode);
             
             if (!smsResult.Success)
             {
+                // If SMS fails, invalidate the OTP
+                await _otpService.InvalidateOtpAsync(request.PhoneNumber);
+                
                 _logger.LogError($"Failed to send OTP SMS to {request.PhoneNumber}: {smsResult.Error}");
                 return StatusCode(500, new OtpResponse
                 {
@@ -238,8 +217,10 @@ public class AuthController : ControllerBase
             return Ok(new OtpResponse
             {
                 Success = true,
-                Message = "OTP sent successfully to your phone",
-                OtpId = otpVerification.Id
+                Message = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development" 
+                    ? $"OTP sent successfully to your phone. DEV MODE OTP: {otpCode}"
+                    : "OTP sent successfully to your phone",
+                OtpId = Guid.NewGuid().ToString() // Generate a session ID
             });
         }
         catch (Exception ex)
@@ -267,6 +248,7 @@ public class AuthController : ControllerBase
                     Message = string.Join("; ", errors)
                 });
             }
+
             if (request.OtpCode.Length != 6 || !request.OtpCode.All(char.IsDigit))
             {
                 return BadRequest(new AuthResponse
@@ -276,53 +258,9 @@ public class AuthController : ControllerBase
                 });
             }
 
-            // Find the OTP verification record
-            var otpVerification = await _context.OtpVerifications
-                .FirstOrDefaultAsync(o => o.PhoneNumber == request.PhoneNumber && 
-                                        o.OtpCode == request.OtpCode && 
-                                        !o.IsUsed && 
-                                        DateTime.UtcNow <= o.ExpiresAt && 
-                                        o.AttemptCount < 3);
-
-            if (otpVerification == null)
-            {
-                // Increment attempt count for existing OTPs
-                var existingOtps = await _context.OtpVerifications
-                    .Where(o => o.PhoneNumber == request.PhoneNumber && !o.IsUsed && !o.IsExpired)
-                    .ToListAsync();
-
-                foreach (var otp in existingOtps)
-                {
-                    otp.AttemptCount++;
-                }
-                await _context.SaveChangesAsync();
-
-                return BadRequest(new AuthResponse
-                {
-                    Success = false,
-                    Message = "Invalid or expired OTP code."
-                });
-            }
-
-            if (otpVerification.IsExpired)
-            {
-                return BadRequest(new AuthResponse
-                {
-                    Success = false,
-                    Message = "OTP has expired. Please request a new one."
-                });
-            }
-
-            if (otpVerification.IsUsed)
-            {
-                return BadRequest(new AuthResponse
-                {
-                    Success = false,
-                    Message = "OTP has already been used."
-                });
-            }
-
-            if (otpVerification.AttemptCount >= 3)
+            // Check attempt count before verification
+            var attemptCount = await _otpService.GetAttemptCountAsync(request.PhoneNumber);
+            if (attemptCount >= 3)
             {
                 return BadRequest(new AuthResponse
                 {
@@ -331,9 +269,17 @@ public class AuthController : ControllerBase
                 });
             }
 
-            // Mark OTP as used
-            otpVerification.IsUsed = true;
-            otpVerification.UsedAt = DateTime.UtcNow;
+            // Verify OTP using Redis service
+            var isValidOtp = await _otpService.VerifyOtpAsync(request.PhoneNumber, request.OtpCode);
+            
+            if (!isValidOtp)
+            {
+                return BadRequest(new AuthResponse
+                {
+                    Success = false,
+                    Message = "Invalid or expired OTP code."
+                });
+            }
 
             // Find or create user by phone number
             var user = await _context.Users
@@ -344,8 +290,7 @@ public class AuthController : ControllerBase
                 // Create new user with phone verification
                 user = new User
                 {
-                    FirstName = "Phone",
-                    LastName = "User", // Can be updated later
+                    FullName = "Phone User", // Can be updated later
                     Email = $"user.{request.PhoneNumber.Replace("+", "").Replace(" ", "")}@glohorizon.com",
                     PhoneNumber = request.PhoneNumber,
                     PhoneVerified = true,
