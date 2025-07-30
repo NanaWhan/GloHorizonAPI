@@ -293,6 +293,7 @@ public class AdminController : ControllerBase
             return StatusCode(500, "An error occurred retrieving booking details");
         }
     }
+    
 
     [HttpPut("bookings/{id}/pricing")]
     [Authorize]

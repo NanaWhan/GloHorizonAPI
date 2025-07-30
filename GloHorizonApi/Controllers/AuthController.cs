@@ -44,6 +44,15 @@ public class AuthController : ControllerBase
     {
         try
         {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage);
+                return BadRequest(new AuthResponse
+                {
+                    Success = false,
+                    Message = string.Join("; ", errors)
+                });
+            }
             // Check if user already exists
             var existingUser = await _context.Users
                 .FirstOrDefaultAsync(u => u.Email == request.Email || u.PhoneNumber == request.PhoneNumber);
@@ -111,6 +120,15 @@ public class AuthController : ControllerBase
     {
         try
         {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage);
+                return BadRequest(new AuthResponse
+                {
+                    Success = false,
+                    Message = string.Join("; ", errors)
+                });
+            }
             // Find user by email
             var user = await _context.Users
                 .FirstOrDefaultAsync(u => u.Email == request.Email);
@@ -163,6 +181,15 @@ public class AuthController : ControllerBase
     {
         try
         {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage);
+                return BadRequest(new OtpResponse
+                {
+                    Success = false,
+                    Message = string.Join("; ", errors)
+                });
+            }
             // Invalidate any existing OTPs for this phone number
             var existingOtps = await _context.OtpVerifications
                 .Where(o => o.PhoneNumber == request.PhoneNumber && 
@@ -227,10 +254,19 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("verify-otp")]
-    public async Task<ActionResult<AuthResponse>> VerifyOtp([FromBody] VerifyOtpRequest request)
+    public async Task<ActionResult<AuthResponse>> VerifyOtp([FromBody] Models.Dtos.Auth.VerifyOtpRequest request)
     {
         try
         {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage);
+                return BadRequest(new AuthResponse
+                {
+                    Success = false,
+                    Message = string.Join("; ", errors)
+                });
+            }
             if (request.OtpCode.Length != 6 || !request.OtpCode.All(char.IsDigit))
             {
                 return BadRequest(new AuthResponse
