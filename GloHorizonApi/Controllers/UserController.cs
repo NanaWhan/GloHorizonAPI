@@ -45,13 +45,15 @@ public class UserController : ControllerBase
             return Ok(new UserProfileResponse
             {
                 Id = user.Id,
-                FullName = user.FullName,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
                 Email = user.Email,
                 PhoneNumber = user.PhoneNumber,
-                EmailVerified = user.EmailVerified,
-                PhoneVerified = user.PhoneVerified,
+                DateOfBirth = user.DateOfBirth,
+                AcceptMarketing = user.AcceptMarketing,
+                Role = user.Role,
                 CreatedAt = user.CreatedAt,
-                LastLoginAt = user.LastLoginAt
+                UpdatedAt = user.LastLoginAt
             });
         }
         catch (Exception ex)
@@ -108,7 +110,10 @@ public class UserController : ControllerBase
                 user.PhoneVerified = false; // Require re-verification if phone changes
             }
 
-            user.FullName = request.FullName.Trim();
+            user.FirstName = request.FirstName.Trim();
+            user.LastName = request.LastName.Trim();
+            user.DateOfBirth = request.DateOfBirth;
+            user.AcceptMarketing = request.AcceptMarketing;
             
             await _context.SaveChangesAsync();
 
@@ -158,9 +163,7 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("booking-history")]
-    public async Task<ActionResult<List<UserBookingHistoryDto>>> GetBookingHistory(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10)
+    public async Task<ActionResult<BookingHistoryResponse>> GetBookingHistory()
     {
         try
         {
@@ -170,27 +173,38 @@ public class UserController : ControllerBase
                 return Unauthorized("Invalid authentication token");
             }
 
-            var bookings = await _context.BookingRequests
+            var allBookings = await _context.BookingRequests
                 .Where(b => b.UserId == userId)
+                .ToListAsync();
+
+            var bookings = allBookings
                 .OrderByDescending(b => b.CreatedAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
                 .Select(b => new UserBookingHistoryDto
                 {
                     Id = b.Id,
                     ReferenceNumber = b.ReferenceNumber,
                     ServiceType = b.ServiceType.ToString(),
                     Status = b.Status.ToString(),
-                    Urgency = b.Urgency.ToString(),
-                    CreatedAt = b.CreatedAt,
-                    UpdatedAt = b.UpdatedAt,
-                    EstimatedPrice = b.EstimatedPrice,
-                    FinalPrice = b.FinalPrice,
-                    Currency = b.Currency
+                    TotalAmount = b.FinalPrice ?? b.EstimatedPrice ?? 0,
+                    CreatedAt = b.CreatedAt
                 })
-                .ToListAsync();
+                .ToList();
 
-            return Ok(bookings);
+            var stats = new BookingStats
+            {
+                TotalBookings = allBookings.Count,
+                PendingBookings = allBookings.Count(b => b.Status == BookingStatus.Pending || b.Status == BookingStatus.UnderReview || b.Status == BookingStatus.Processing),
+                ConfirmedBookings = allBookings.Count(b => b.Status == BookingStatus.Confirmed),
+                TotalSpent = allBookings.Sum(b => b.FinalPrice ?? b.EstimatedPrice ?? 0)
+            };
+
+            var response = new BookingHistoryResponse
+            {
+                Bookings = bookings,
+                Stats = stats
+            };
+
+            return Ok(response);
         }
         catch (Exception ex)
         {
@@ -238,7 +252,8 @@ public class UserController : ControllerBase
             // Soft delete user account
             user.Email = $"deleted_{user.Id}@deleted.com";
             user.PhoneNumber = $"deleted_{user.Id}";
-            user.FullName = "Deleted User";
+            user.FirstName = "Deleted";
+            user.LastName = "User";
             user.PasswordHash = "";
             
             await _context.SaveChangesAsync();

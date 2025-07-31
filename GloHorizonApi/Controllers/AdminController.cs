@@ -60,9 +60,12 @@ public class AdminController : ControllerBase
                 User = new UserInfo
                 {
                     Id = admin.Id,
-                    FullName = admin.FullName,
+                    FirstName = admin.FullName.Split(' ', 2).FirstOrDefault() ?? "",
+                    LastName = admin.FullName.Split(' ', 2).Skip(1).FirstOrDefault() ?? "",
                     Email = admin.Email,
-                    PhoneNumber = admin.PhoneNumber
+                    PhoneNumber = admin.PhoneNumber,
+                    Role = admin.Role.ToString(),
+                    CreatedAt = admin.CreatedAt
                 }
             });
         }
@@ -265,9 +268,12 @@ public class AdminController : ControllerBase
                 User = new UserInfo
                 {
                     Id = booking.User.Id,
-                    FullName = booking.User.FullName,
+                    FirstName = booking.User.FirstName,
+                    LastName = booking.User.LastName,
                     Email = booking.User.Email,
-                    PhoneNumber = booking.User.PhoneNumber
+                    PhoneNumber = booking.User.PhoneNumber,
+                    Role = booking.User.Role,
+                    CreatedAt = booking.User.CreatedAt
                 },
                 StatusHistory = booking.StatusHistory
                     .OrderByDescending(h => h.ChangedAt)

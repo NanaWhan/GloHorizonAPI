@@ -75,10 +75,13 @@ public class AuthController : ControllerBase
             // Create new user
             var user = new User
             {
-                FullName = request.FullName.Trim(),
+                FirstName = request.FirstName.Trim(),
+                LastName = request.LastName.Trim(),
                 Email = request.Email,
                 PhoneNumber = request.PhoneNumber,
                 PasswordHash = passwordHash,
+                DateOfBirth = request.DateOfBirth,
+                AcceptMarketing = request.AcceptMarketing,
                 EmailVerified = false,
                 PhoneVerified = false
             };
@@ -97,11 +100,12 @@ public class AuthController : ControllerBase
                 User = new UserInfo
                 {
                     Id = user.Id,
-                    FullName = user.FullName,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
                     Email = user.Email,
                     PhoneNumber = user.PhoneNumber,
-                    EmailVerified = user.EmailVerified,
-                    PhoneVerified = user.PhoneVerified
+                    Role = user.Role,
+                    CreatedAt = user.CreatedAt
                 }
             });
         }
@@ -158,11 +162,12 @@ public class AuthController : ControllerBase
                 User = new UserInfo
                 {
                     Id = user.Id,
-                    FullName = user.FullName,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
                     Email = user.Email,
                     PhoneNumber = user.PhoneNumber,
-                    EmailVerified = user.EmailVerified,
-                    PhoneVerified = user.PhoneVerified
+                    Role = user.Role,
+                    CreatedAt = user.CreatedAt
                 }
             });
         }
@@ -189,6 +194,19 @@ public class AuthController : ControllerBase
                 {
                     Success = false,
                     Message = string.Join("; ", errors)
+                });
+            }
+
+            // CRITICAL: Check if user exists with this phone number
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.PhoneNumber == request.PhoneNumber);
+
+            if (user == null)
+            {
+                return NotFound(new OtpResponse
+                {
+                    Success = false,
+                    Message = "Phone number not registered. Please create an account first."
                 });
             }
 
@@ -281,29 +299,22 @@ public class AuthController : ControllerBase
                 });
             }
 
-            // Find or create user by phone number
+            // Find user by phone number
             var user = await _context.Users
                 .FirstOrDefaultAsync(u => u.PhoneNumber == request.PhoneNumber);
 
             if (user == null)
             {
-                // Create new user with phone verification
-                user = new User
+                return NotFound(new AuthResponse
                 {
-                    FullName = "Phone User", // Can be updated later
-                    Email = $"user.{request.PhoneNumber.Replace("+", "").Replace(" ", "")}@glohorizon.com",
-                    PhoneNumber = request.PhoneNumber,
-                    PhoneVerified = true,
-                    EmailVerified = false
-                };
+                    Success = false,
+                    Message = "Phone number not found. Please register first."
+                });
+            }
 
-                _context.Users.Add(user);
-            }
-            else
-            {
-                user.PhoneVerified = true;
-                user.LastLoginAt = DateTime.UtcNow;
-            }
+            // Update user verification status
+            user.PhoneVerified = true;
+            user.LastLoginAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
 
@@ -318,11 +329,12 @@ public class AuthController : ControllerBase
                 User = new UserInfo
                 {
                     Id = user.Id,
-                    FullName = user.FullName,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
                     Email = user.Email,
                     PhoneNumber = user.PhoneNumber,
-                    EmailVerified = user.EmailVerified,
-                    PhoneVerified = user.PhoneVerified
+                    Role = user.Role,
+                    CreatedAt = user.CreatedAt
                 }
             });
         }
@@ -333,6 +345,32 @@ public class AuthController : ControllerBase
             {
                 Success = false,
                 Message = "An error occurred during OTP verification"
+            });
+        }
+    }
+
+    [HttpPost("logout")]
+    [Authorize]
+    public ActionResult Logout()
+    {
+        try
+        {
+            // Optional: Add token to blacklist here if implementing token blacklisting
+            // For now, we'll just return success as frontend will clear the token
+            
+            return Ok(new
+            {
+                Success = true,
+                Message = "Logged out successfully"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during logout");
+            return StatusCode(500, new
+            {
+                Success = false,
+                Message = "An error occurred during logout"
             });
         }
     }

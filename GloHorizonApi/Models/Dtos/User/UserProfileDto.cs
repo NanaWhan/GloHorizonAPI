@@ -5,20 +5,26 @@ namespace GloHorizonApi.Models.Dtos.User;
 public class UserProfileResponse
 {
     public string Id { get; set; } = string.Empty;
-    public string FullName { get; set; } = string.Empty;
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
-    public bool EmailVerified { get; set; }
-    public bool PhoneVerified { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public bool AcceptMarketing { get; set; }
+    public string Role { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
-    public DateTime? LastLoginAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 }
 
 public class UpdateUserProfileRequest
 {
     [Required]
-    [MaxLength(100)]
-    public string FullName { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string FirstName { get; set; } = string.Empty;
+    
+    [Required]
+    [MaxLength(50)]
+    public string LastName { get; set; } = string.Empty;
     
     [Required]
     [EmailAddress]
@@ -29,6 +35,9 @@ public class UpdateUserProfileRequest
     [Phone]
     [MaxLength(20)]
     public string PhoneNumber { get; set; } = string.Empty;
+    
+    public DateTime? DateOfBirth { get; set; }
+    public bool AcceptMarketing { get; set; } = false;
 }
 
 public class ChangePasswordRequest
@@ -60,10 +69,20 @@ public class UserBookingHistoryDto
     public string ReferenceNumber { get; set; } = string.Empty;
     public string ServiceType { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
-    public string Urgency { get; set; } = string.Empty;
+    public decimal TotalAmount { get; set; }
     public DateTime CreatedAt { get; set; }
-    public DateTime? UpdatedAt { get; set; }
-    public decimal? EstimatedPrice { get; set; }
-    public decimal? FinalPrice { get; set; }
-    public string? Currency { get; set; }
+}
+
+public class BookingHistoryResponse
+{
+    public List<UserBookingHistoryDto> Bookings { get; set; } = new List<UserBookingHistoryDto>();
+    public BookingStats Stats { get; set; } = new BookingStats();
+}
+
+public class BookingStats
+{
+    public int TotalBookings { get; set; }
+    public int PendingBookings { get; set; }
+    public int ConfirmedBookings { get; set; }
+    public decimal TotalSpent { get; set; }
 } 
