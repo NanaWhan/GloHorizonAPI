@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Text.Json;
 using GloHorizonApi.Data;
 using GloHorizonApi.Models.DomainModels;
 using GloHorizonApi.Models.Dtos.Admin;
@@ -139,9 +140,9 @@ public class AdminController : ControllerBase
 
     [HttpGet("bookings")]
     [Authorize]
-    public async Task<ActionResult<List<BookingInfo>>> GetAllBookings(
+    public async Task<ActionResult<List<BookingTrackingDto>>> GetAllBookings(
         [FromQuery] BookingStatus? status = null,
-        [FromQuery] ServiceType? serviceType = null,
+        [FromQuery] BookingType? serviceType = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
@@ -161,7 +162,7 @@ public class AdminController : ControllerBase
                 .OrderByDescending(b => b.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(b => new BookingInfo
+                .Select(b => new BookingTrackingDto
                 {
                     Id = b.Id,
                     ReferenceNumber = b.ReferenceNumber,
@@ -169,9 +170,15 @@ public class AdminController : ControllerBase
                     Status = b.Status,
                     Urgency = b.Urgency,
                     CreatedAt = b.CreatedAt,
-                    EstimatedPrice = b.EstimatedPrice,
-                    FinalPrice = b.FinalPrice,
-                    Currency = b.Currency
+                    QuotedAmount = b.QuotedAmount,
+                    FinalAmount = b.FinalAmount,
+                    Currency = b.Currency,
+                    ContactEmail = b.ContactEmail,
+                    ContactPhone = b.ContactPhone,
+                    Destination = b.Destination,
+                    TravelDate = b.TravelDate,
+                    SpecialRequests = b.SpecialRequests,
+                    AdminNotes = b.AdminNotes
                 })
                 .ToListAsync();
 
@@ -206,10 +213,10 @@ public class AdminController : ControllerBase
             booking.AdminNotes = request.AdminNotes;
 
             if (request.EstimatedPrice.HasValue)
-                booking.EstimatedPrice = request.EstimatedPrice.Value;
+                booking.QuotedAmount = request.EstimatedPrice.Value;
 
             if (request.FinalPrice.HasValue)
-                booking.FinalPrice = request.FinalPrice.Value;
+                booking.FinalAmount = request.FinalPrice.Value;
 
             // Add status history
             var statusHistory = new BookingStatusHistory
@@ -261,8 +268,8 @@ public class AdminController : ControllerBase
                 Urgency = booking.Urgency,
                 CreatedAt = booking.CreatedAt,
                 UpdatedAt = booking.UpdatedAt,
-                EstimatedPrice = booking.EstimatedPrice,
-                FinalPrice = booking.FinalPrice,
+                EstimatedPrice = booking.QuotedAmount,
+                FinalPrice = booking.FinalAmount,
                 Currency = booking.Currency,
                 AdminNotes = booking.AdminNotes,
                 User = new UserInfo
@@ -285,10 +292,8 @@ public class AdminController : ControllerBase
                         ChangedBy = h.ChangedBy,
                         ChangedAt = h.ChangedAt
                     }).ToList(),
-                // Parse booking details from JSON
-                BookingDetails = string.IsNullOrEmpty(booking.BookingData) 
-                    ? new Dictionary<string, object>() 
-                    : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(booking.BookingData) ?? new Dictionary<string, object>()
+                // Parse booking details from JSON based on service type
+                BookingDetails = GetBookingDetailsAsDictionary(booking)
             };
 
             return Ok(detailedBooking);
@@ -315,15 +320,15 @@ public class AdminController : ControllerBase
                 return NotFound($"Booking with ID {id} not found");
             }
 
-            var oldEstimatedPrice = booking.EstimatedPrice;
-            var oldFinalPrice = booking.FinalPrice;
+            var oldEstimatedPrice = booking.QuotedAmount;
+            var oldFinalPrice = booking.FinalAmount;
 
             // Update pricing
             if (request.EstimatedPrice.HasValue)
-                booking.EstimatedPrice = request.EstimatedPrice.Value;
+                booking.QuotedAmount = request.EstimatedPrice.Value;
 
             if (request.FinalPrice.HasValue)
-                booking.FinalPrice = request.FinalPrice.Value;
+                booking.FinalAmount = request.FinalPrice.Value;
 
             if (!string.IsNullOrEmpty(request.Currency))
                 booking.Currency = request.Currency;
@@ -336,7 +341,7 @@ public class AdminController : ControllerBase
                 BookingRequestId = booking.Id,
                 FromStatus = booking.Status,
                 ToStatus = booking.Status, // Status remains same, just pricing updated
-                Notes = $"Pricing updated: Est: {oldEstimatedPrice} → {booking.EstimatedPrice}, Final: {oldFinalPrice} → {booking.FinalPrice}. Reason: {request.Notes}",
+                Notes = $"Pricing updated: Est: {oldEstimatedPrice} → {booking.QuotedAmount}, Final: {oldFinalPrice} → {booking.FinalAmount}. Reason: {request.Notes}",
                 ChangedBy = User.FindFirst("FullName")?.Value ?? "Admin",
                 ChangedAt = DateTime.UtcNow
             };
@@ -349,8 +354,8 @@ public class AdminController : ControllerBase
             return Ok(new { 
                 Success = true, 
                 Message = "Booking pricing updated successfully",
-                EstimatedPrice = booking.EstimatedPrice,
-                FinalPrice = booking.FinalPrice,
+                EstimatedPrice = booking.QuotedAmount,
+                FinalPrice = booking.FinalAmount,
                 Currency = booking.Currency
             });
         }
@@ -436,7 +441,7 @@ public class AdminController : ControllerBase
             }
 
             // Check if booking is ready for payment
-            if (booking.Status != BookingStatus.QuoteAccepted)
+            if (booking.Status != BookingStatus.QuoteProvided)
             {
                 return BadRequest(new { 
                     Success = false, 
@@ -444,7 +449,7 @@ public class AdminController : ControllerBase
                 });
             }
 
-            if (!booking.FinalPrice.HasValue || booking.FinalPrice <= 0)
+            if (!booking.FinalAmount.HasValue || booking.FinalAmount <= 0)
             {
                 return BadRequest(new { 
                     Success = false, 
@@ -455,7 +460,7 @@ public class AdminController : ControllerBase
             // Create payment request
             var paymentRequest = new Models.Dtos.Payment.GenericPaymentRequest
             {
-                Amount = booking.FinalPrice.Value,
+                Amount = booking.FinalAmount.Value,
                 ClientReference = booking.ReferenceNumber,
                 TicketName = $"{booking.ServiceType} Booking",
                 User = booking.User
@@ -484,7 +489,7 @@ public class AdminController : ControllerBase
                 BookingRequestId = booking.Id,
                 FromStatus = oldStatus,
                 ToStatus = BookingStatus.PaymentPending,
-                Notes = $"Payment link generated. Amount: {booking.FinalPrice:C}",
+                Notes = $"Payment link generated. Amount: {booking.FinalAmount:C}",
                 ChangedBy = User.FindFirst("FullName")?.Value ?? "Admin",
                 ChangedAt = DateTime.UtcNow
             };
@@ -499,7 +504,7 @@ public class AdminController : ControllerBase
                 Message = "Payment link generated successfully",
                 PaymentUrl = paymentResult.Data?.AuthorizationUrl,
                 Reference = paymentResult.Data?.Reference,
-                Amount = booking.FinalPrice,
+                Amount = booking.FinalAmount,
                 Currency = booking.Currency ?? "GHS"
             });
         }
@@ -518,7 +523,7 @@ public class AdminController : ControllerBase
         {
             var totalBookings = await _context.BookingRequests.CountAsync();
             var pendingBookings = await _context.BookingRequests
-                .CountAsync(b => b.Status == BookingStatus.Pending);
+                .CountAsync(b => b.Status == BookingStatus.Submitted);
             var completedBookings = await _context.BookingRequests
                 .CountAsync(b => b.Status == BookingStatus.Completed);
             var totalUsers = await _context.Users.CountAsync();
@@ -527,14 +532,23 @@ public class AdminController : ControllerBase
                 .Include(b => b.User)
                 .OrderByDescending(b => b.CreatedAt)
                 .Take(10)
-                .Select(b => new BookingInfo
+                .Select(b => new BookingTrackingDto
                 {
                     Id = b.Id,
                     ReferenceNumber = b.ReferenceNumber,
                     ServiceType = b.ServiceType,
                     Status = b.Status,
                     Urgency = b.Urgency,
-                    CreatedAt = b.CreatedAt
+                    CreatedAt = b.CreatedAt,
+                    ContactEmail = b.ContactEmail,
+                    ContactPhone = b.ContactPhone,
+                    Destination = b.Destination,
+                    TravelDate = b.TravelDate,
+                    QuotedAmount = b.QuotedAmount,
+                    FinalAmount = b.FinalAmount,
+                    Currency = b.Currency,
+                    SpecialRequests = b.SpecialRequests,
+                    AdminNotes = b.AdminNotes
                 })
                 .ToListAsync();
 
@@ -553,7 +567,8 @@ public class AdminController : ControllerBase
             return StatusCode(500, "An error occurred retrieving dashboard data");
         }
     }
-}
+
+
 
 // Additional DTOs for admin operations
 public class UpdateBookingStatusRequest
@@ -571,7 +586,7 @@ public class AdminDashboardResponse
     public int PendingBookings { get; set; }
     public int CompletedBookings { get; set; }
     public int TotalUsers { get; set; }
-    public List<BookingInfo> RecentBookings { get; set; } = new();
+    public List<BookingTrackingDto> RecentBookings { get; set; } = new();
 }
 
 // New DTOs for Week 1 endpoints
@@ -579,7 +594,7 @@ public class DetailedBookingInfo
 {
     public int Id { get; set; }
     public string ReferenceNumber { get; set; } = string.Empty;
-    public ServiceType ServiceType { get; set; }
+    public BookingType ServiceType { get; set; }
     public BookingStatus Status { get; set; }
     public UrgencyLevel Urgency { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -608,6 +623,39 @@ public class UpdatePricingRequest
     public decimal? FinalPrice { get; set; }
     public string? Currency { get; set; }
     public string? Notes { get; set; }
+}
+
+    // Helper method to extract booking details as dictionary
+    private Dictionary<string, object> GetBookingDetailsAsDictionary(BookingRequest booking)
+    {
+        var details = new Dictionary<string, object>();
+        
+        switch (booking.ServiceType)
+        {
+            case BookingType.Flight when !string.IsNullOrEmpty(booking.FlightDetails):
+                var flightDetails = JsonSerializer.Deserialize<Dictionary<string, object>>(booking.FlightDetails);
+                return flightDetails ?? new Dictionary<string, object>();
+                
+            case BookingType.Hotel when !string.IsNullOrEmpty(booking.HotelDetails):
+                var hotelDetails = JsonSerializer.Deserialize<Dictionary<string, object>>(booking.HotelDetails);
+                return hotelDetails ?? new Dictionary<string, object>();
+                
+            case BookingType.Tour when !string.IsNullOrEmpty(booking.TourDetails):
+                var tourDetails = JsonSerializer.Deserialize<Dictionary<string, object>>(booking.TourDetails);
+                return tourDetails ?? new Dictionary<string, object>();
+                
+            case BookingType.Visa when !string.IsNullOrEmpty(booking.VisaDetails):
+                var visaDetails = JsonSerializer.Deserialize<Dictionary<string, object>>(booking.VisaDetails);
+                return visaDetails ?? new Dictionary<string, object>();
+                
+            case BookingType.CompletePackage when !string.IsNullOrEmpty(booking.PackageDetails):
+                var packageDetails = JsonSerializer.Deserialize<Dictionary<string, object>>(booking.PackageDetails);
+                return packageDetails ?? new Dictionary<string, object>();
+                
+            default:
+                return new Dictionary<string, object>();
+        }
+    }
 }
 
 public class AddNoteRequest

@@ -3,6 +3,7 @@ using System;
 using GloHorizonApi.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GloHorizonApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250730181259_UpdateUserModelForAuthSpec")]
+    partial class UpdateUserModelForAuthSpec
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -77,61 +80,6 @@ namespace GloHorizonApi.Migrations
                     b.ToTable("Admins");
                 });
 
-            modelBuilder.Entity("GloHorizonApi.Models.DomainModels.BookingDocument", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("BookingRequestId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<string>("DocumentType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("FileSize")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("FileUrl")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsRequired")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsVerified")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("UploadedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("UploadedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BookingRequestId", "DocumentType");
-
-                    b.ToTable("BookingDocuments");
-                });
-
             modelBuilder.Entity("GloHorizonApi.Models.DomainModels.BookingRequest", b =>
                 {
                     b.Property<int>("Id")
@@ -144,18 +92,12 @@ namespace GloHorizonApi.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("BookingData")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("ContactEmail")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("ContactPhone")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
@@ -163,24 +105,11 @@ namespace GloHorizonApi.Migrations
                     b.Property<string>("Currency")
                         .HasColumnType("text");
 
-                    b.Property<string>("Destination")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<decimal?>("FinalAmount")
+                    b.Property<decimal?>("EstimatedPrice")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)");
 
-                    b.Property<string>("FlightDetails")
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("HotelDetails")
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("PackageDetails")
-                        .HasColumnType("jsonb");
-
-                    b.Property<decimal?>("QuotedAmount")
+                    b.Property<decimal?>("FinalPrice")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)");
 
@@ -192,18 +121,8 @@ namespace GloHorizonApi.Migrations
                     b.Property<int>("ServiceType")
                         .HasColumnType("integer");
 
-                    b.Property<string>("SpecialRequests")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
                     b.Property<int>("Status")
                         .HasColumnType("integer");
-
-                    b.Property<string>("TourDetails")
-                        .HasColumnType("jsonb");
-
-                    b.Property<DateTime?>("TravelDate")
-                        .HasColumnType("timestamp without time zone");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp without time zone");
@@ -215,17 +134,10 @@ namespace GloHorizonApi.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("VisaDetails")
-                        .HasColumnType("jsonb");
-
                     b.HasKey("Id");
 
                     b.HasIndex("ReferenceNumber")
                         .IsUnique();
-
-                    b.HasIndex("ServiceType");
-
-                    b.HasIndex("Status");
 
                     b.HasIndex("UserId", "CreatedAt");
 
@@ -497,17 +409,6 @@ namespace GloHorizonApi.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("GloHorizonApi.Models.DomainModels.BookingDocument", b =>
-                {
-                    b.HasOne("GloHorizonApi.Models.DomainModels.BookingRequest", "BookingRequest")
-                        .WithMany("Documents")
-                        .HasForeignKey("BookingRequestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("BookingRequest");
-                });
-
             modelBuilder.Entity("GloHorizonApi.Models.DomainModels.BookingRequest", b =>
                 {
                     b.HasOne("GloHorizonApi.Models.DomainModels.User", "User")
@@ -532,8 +433,6 @@ namespace GloHorizonApi.Migrations
 
             modelBuilder.Entity("GloHorizonApi.Models.DomainModels.BookingRequest", b =>
                 {
-                    b.Navigation("Documents");
-
                     b.Navigation("StatusHistory");
                 });
 

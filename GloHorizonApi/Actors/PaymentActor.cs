@@ -66,7 +66,7 @@ public class PaymentActor : ReceiveActor
                 return;
             }
 
-            _logger.LogInformation($"PaymentActor: Found booking. Status: {booking.Status}, Amount: {booking.FinalPrice}, CustomerPhone: {booking.User.PhoneNumber ?? "None"}");
+            _logger.LogInformation($"PaymentActor: Found booking. Status: {booking.Status}, Amount: {booking.FinalAmount}, CustomerPhone: {booking.User.PhoneNumber ?? "None"}");
 
             // Mark as processed to avoid duplicates
             _processedPayments.Add(message.TransactionReference);
@@ -157,7 +157,7 @@ public class PaymentActor : ReceiveActor
             }
 
             var subject = $"Payment Confirmed - {booking.ServiceType} Booking {booking.ReferenceNumber}";
-            var message = $"Dear {booking.User.FirstName},\n\nYour payment for booking {booking.ReferenceNumber} has been confirmed. We're now processing your {booking.ServiceType} request.\n\nAmount: {booking.FinalPrice:C}\nService: {booking.ServiceType}\n\nYou'll receive further updates as we process your booking.\n\nThank you for choosing GloHorizon Travel!";
+            var message = $"Dear {booking.User.FirstName},\n\nYour payment for booking {booking.ReferenceNumber} has been confirmed. We're now processing your {booking.ServiceType} request.\n\nAmount: {booking.FinalAmount:C}\nService: {booking.ServiceType}\n\nYou'll receive further updates as we process your booking.\n\nThank you for choosing GloHorizon Travel!";
             
             var result = await _emailService.SendBookingStatusUpdateAsync(
                 booking.User.Email,
@@ -196,7 +196,7 @@ public class PaymentActor : ReceiveActor
                              $"Email: {booking.User.Email}\n" +
                              $"Phone: {booking.User.PhoneNumber}\n" +
                              $"Service: {booking.ServiceType}\n" +
-                             $"Amount: {booking.FinalPrice:C}\n" +
+                             $"Amount: {booking.FinalAmount:C}\n" +
                              $"Urgency: {booking.Urgency}\n" +
                              $"Status: Processing";
 
@@ -206,7 +206,7 @@ public class PaymentActor : ReceiveActor
             // Send SMS notifications to admin phones
             var smsTasks = _adminNotificationPhones.Select(async adminPhone =>
             {
-                var smsMessage = $"Payment received: {booking.ServiceType} booking {booking.ReferenceNumber} from {booking.User.FirstName} {booking.User.LastName}. Amount: {booking.FinalPrice:C}. Urgency: {booking.Urgency}";
+                var smsMessage = $"Payment received: {booking.ServiceType} booking {booking.ReferenceNumber} from {booking.User.FirstName} {booking.User.LastName}. Amount: {booking.FinalAmount:C}. Urgency: {booking.Urgency}";
                 await _smsService.SendSmsAsync(adminPhone, smsMessage);
             });
 

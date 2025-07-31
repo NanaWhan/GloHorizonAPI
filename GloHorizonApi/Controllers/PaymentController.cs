@@ -120,7 +120,7 @@ public class PaymentController : ControllerBase
                         var paymentActor = _actorSystem.ActorSelection("/user/payment-actor");
                         var paymentMessage = new PaymentCompletedMessage(
                             reference,
-                            booking.FinalPrice ?? 0,
+                            booking.FinalAmount ?? 0,
                             booking.User.PhoneNumber ?? ""
                         );
 
@@ -291,7 +291,7 @@ public class PaymentController : ControllerBase
                     var paymentActor = _actorSystem.ActorSelection("/user/payment-actor");
                     var paymentMessage = new PaymentCompletedMessage(
                         reference,
-                        booking.FinalPrice ?? 0,
+                        booking.FinalAmount ?? 0,
                         booking.User.PhoneNumber ?? ""
                     );
 

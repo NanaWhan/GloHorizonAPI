@@ -30,48 +30,219 @@ public class BookingController : ControllerBase
         _actorSystem = actorSystem;
     }
 
-    [HttpPost("submit")]
-    public async Task<ActionResult<BookingResponse>> SubmitBooking([FromBody] SubmitBookingRequest request)
+    // ✈️ FLIGHT BOOKING SUBMISSION
+    [HttpPost("flight")]
+    public async Task<ActionResult<BookingSubmissionResponse>> SubmitFlightBooking([FromBody] FlightBookingSubmissionDto request)
+    {
+        return await ProcessBookingSubmission(
+            BookingType.Flight,
+            request.ContactEmail,
+            request.ContactPhone,
+            request.SpecialRequests,
+            request.Urgency,
+            flightDetails: request.FlightDetails,
+            destination: request.FlightDetails.ArrivalCity,
+            travelDate: request.FlightDetails.DepartureDate
+        );
+    }
+
+    // 🏨 HOTEL BOOKING SUBMISSION
+    [HttpPost("hotel")]
+    public async Task<ActionResult<BookingSubmissionResponse>> SubmitHotelBooking([FromBody] HotelBookingSubmissionDto request)
+    {
+        return await ProcessBookingSubmission(
+            BookingType.Hotel,
+            request.ContactEmail,
+            request.ContactPhone,
+            request.SpecialRequests,
+            request.Urgency,
+            hotelDetails: request.HotelDetails,
+            destination: request.HotelDetails.Destination,
+            travelDate: request.HotelDetails.CheckInDate
+        );
+    }
+
+    // 🗺️ TOUR BOOKING SUBMISSION
+    [HttpPost("tour")]
+    public async Task<ActionResult<BookingSubmissionResponse>> SubmitTourBooking([FromBody] TourBookingSubmissionDto request)
+    {
+        return await ProcessBookingSubmission(
+            BookingType.Tour,
+            request.ContactEmail,
+            request.ContactPhone,
+            request.SpecialRequests,
+            request.Urgency,
+            tourDetails: request.TourDetails,
+            destination: request.TourDetails.Destination,
+            travelDate: request.TourDetails.StartDate
+        );
+    }
+
+    // 📄 VISA BOOKING SUBMISSION
+    [HttpPost("visa")]
+    public async Task<ActionResult<BookingSubmissionResponse>> SubmitVisaBooking([FromBody] VisaBookingSubmissionDto request)
+    {
+        return await ProcessBookingSubmission(
+            BookingType.Visa,
+            request.ContactEmail,
+            request.ContactPhone,
+            request.SpecialRequests,
+            request.Urgency,
+            visaDetails: request.VisaDetails,
+            destination: request.VisaDetails.DestinationCountry,
+            travelDate: request.VisaDetails.IntendedTravelDate
+        );
+    }
+
+    // 📦 COMPLETE PACKAGE SUBMISSION
+    [HttpPost("complete-package")]
+    public async Task<ActionResult<BookingSubmissionResponse>> SubmitCompletePackage([FromBody] CompletePackageSubmissionDto request)
+    {
+        var destination = request.PackageDetails.FlightDetails?.ArrivalCity ?? 
+                         request.PackageDetails.HotelDetails?.Destination ?? 
+                         request.PackageDetails.VisaDetails?.DestinationCountry ?? "Multiple";
+        
+        var travelDate = request.PackageDetails.FlightDetails?.DepartureDate ?? 
+                        request.PackageDetails.HotelDetails?.CheckInDate ?? 
+                        request.PackageDetails.VisaDetails?.IntendedTravelDate ?? DateTime.Now.AddMonths(1);
+
+        return await ProcessBookingSubmission(
+            BookingType.CompletePackage,
+            request.ContactEmail,
+            request.ContactPhone,
+            request.SpecialRequests,
+            request.Urgency,
+            packageDetails: request.PackageDetails,
+            destination: destination,
+            travelDate: travelDate
+        );
+    }
+
+    // 📊 BOOKING TRACKING
+    [HttpGet("track/{referenceNumber}")]
+    public async Task<ActionResult<BookingTrackingDto>> TrackBooking(string referenceNumber)
     {
         try
         {
-            // Get user ID from JWT token
             var userId = User.FindFirst("Id")?.Value;
-            
             if (string.IsNullOrEmpty(userId))
             {
-                return Unauthorized(new BookingResponse
+                return Unauthorized(new { Success = false, Message = "Invalid authentication token" });
+            }
+
+            var booking = await _context.BookingRequests
+                .Include(b => b.StatusHistory)
+                .Include(b => b.Documents)
+                .Include(b => b.User)
+                .FirstOrDefaultAsync(b => b.ReferenceNumber == referenceNumber && b.UserId == userId);
+
+            if (booking == null)
+            {
+                return NotFound(new { Success = false, Message = "Booking not found or access denied" });
+            }
+
+            return Ok(MapToTrackingDto(booking));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error tracking booking: {ReferenceNumber}", referenceNumber);
+            return StatusCode(500, new { Success = false, Message = "Error retrieving booking information" });
+        }
+    }
+
+    // 📋 GET USER'S BOOKINGS
+    [HttpGet("my-bookings")]
+    public async Task<ActionResult<BookingListResponse>> GetMyBookings()
+    {
+        try
+        {
+            var userId = User.FindFirst("Id")?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new BookingListResponse { Success = false, Message = "Invalid authentication token" });
+            }
+
+            var bookings = await _context.BookingRequests
+                .Include(b => b.StatusHistory)
+                .Include(b => b.Documents)
+                .Where(b => b.UserId == userId)
+                .OrderByDescending(b => b.CreatedAt)
+                .ToListAsync();
+
+            return Ok(new BookingListResponse
+            {
+                Success = true,
+                Message = "Bookings retrieved successfully",
+                Bookings = bookings.Select(MapToTrackingDto).ToList(),
+                TotalCount = bookings.Count
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving user bookings");
+            return StatusCode(500, new BookingListResponse { Success = false, Message = "Error retrieving bookings" });
+        }
+    }
+
+    // ⚙️ PRIVATE HELPER METHODS
+    private async Task<ActionResult<BookingSubmissionResponse>> ProcessBookingSubmission(
+        BookingType serviceType,
+        string contactEmail,
+        string contactPhone,
+        string? specialRequests,
+        UrgencyLevel urgency,
+        FlightBookingDetails? flightDetails = null,
+        HotelBookingDetails? hotelDetails = null,
+        TourBookingDetails? tourDetails = null,
+        VisaBookingDetails? visaDetails = null,
+        CompletePackageDetails? packageDetails = null,
+        string? destination = null,
+        DateTime? travelDate = null)
+    {
+        try
+        {
+            var userId = User.FindFirst("Id")?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new BookingSubmissionResponse
                 {
                     Success = false,
                     Message = "Invalid authentication token"
                 });
             }
 
-            // Verify user exists
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
             {
-                return Unauthorized(new BookingResponse
+                return Unauthorized(new BookingSubmissionResponse
                 {
                     Success = false,
                     Message = "User not found"
                 });
             }
 
-            // Generate unique reference number
-            var referenceNumber = GenerateReferenceNumber(request.ServiceType);
+            var referenceNumber = GenerateReferenceNumber(serviceType);
 
-            // Create booking request
             var booking = new BookingRequest
             {
                 ReferenceNumber = referenceNumber,
                 UserId = userId,
-                ServiceType = request.ServiceType,
-                Status = BookingStatus.Pending,
-                BookingData = JsonSerializer.Serialize(request.BookingData),
-                Urgency = request.Urgency,
-                AdminNotes = request.SpecialRequests,
-                CreatedAt = DateTime.UtcNow
+                ServiceType = serviceType,
+                Status = BookingStatus.Submitted,
+                ContactEmail = contactEmail,
+                ContactPhone = contactPhone,
+                SpecialRequests = specialRequests,
+                Urgency = urgency,
+                Destination = destination,
+                TravelDate = travelDate,
+                CreatedAt = DateTime.UtcNow,
+                
+                // Store service-specific details as JSON
+                FlightDetails = flightDetails != null ? JsonSerializer.Serialize(flightDetails) : null,
+                HotelDetails = hotelDetails != null ? JsonSerializer.Serialize(hotelDetails) : null,
+                TourDetails = tourDetails != null ? JsonSerializer.Serialize(tourDetails) : null,
+                VisaDetails = visaDetails != null ? JsonSerializer.Serialize(visaDetails) : null,
+                PackageDetails = packageDetails != null ? JsonSerializer.Serialize(packageDetails) : null
             };
 
             _context.BookingRequests.Add(booking);
@@ -80,9 +251,9 @@ public class BookingController : ControllerBase
             var statusHistory = new BookingStatusHistory
             {
                 BookingRequestId = booking.Id,
-                FromStatus = BookingStatus.Pending,
-                ToStatus = BookingStatus.Pending,
-                Notes = "Booking request submitted",
+                FromStatus = BookingStatus.Submitted,
+                ToStatus = BookingStatus.Submitted,
+                Notes = $"{serviceType} booking request submitted",
                 ChangedBy = "System",
                 ChangedAt = DateTime.UtcNow
             };
@@ -90,178 +261,102 @@ public class BookingController : ControllerBase
             _context.BookingStatusHistories.Add(statusHistory);
             await _context.SaveChangesAsync();
 
-            // Send admin notifications via actor system
-            try
-            {
-                var bookingActor = _actorSystem.ActorSelection("/user/booking-notification-actor");
-                var notificationMessage = new NewBookingMessage
-                {
-                    ReferenceNumber = referenceNumber,
-                    CustomerName = user.FullName,
-                    CustomerEmail = user.Email,
-                    CustomerPhone = user.PhoneNumber,
-                    ServiceType = request.ServiceType,
-                    Urgency = UrgencyLevel.Standard
-                };
-                
-                bookingActor.Tell(notificationMessage);
-                _logger.LogInformation($"Admin notification sent for booking: {referenceNumber}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Failed to send admin notification for booking: {referenceNumber}");
-                // Don't fail the booking if notification fails
-            }
-            
-            _logger.LogInformation($"New booking submitted: {referenceNumber} by user {userId}");
+            // Send notifications
+            await SendBookingNotifications(booking, user);
 
-            return Ok(new BookingResponse
+            return Ok(new BookingSubmissionResponse
             {
                 Success = true,
-                Message = "Booking request submitted successfully",
+                Message = $"{serviceType} booking submitted successfully",
                 ReferenceNumber = referenceNumber,
-                Booking = new BookingInfo
-                {
-                    Id = booking.Id,
-                    ReferenceNumber = booking.ReferenceNumber,
-                    ServiceType = booking.ServiceType,
-                    Status = booking.Status,
-                    Urgency = booking.Urgency,
-                    CreatedAt = booking.CreatedAt,
-                    Currency = booking.Currency
-                }
+                Booking = MapToTrackingDto(booking)
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error submitting booking request");
-            return StatusCode(500, new BookingResponse
+            _logger.LogError(ex, "Error submitting {ServiceType} booking", serviceType);
+            return StatusCode(500, new BookingSubmissionResponse
             {
                 Success = false,
-                Message = "An error occurred while submitting your booking request"
+                Message = $"Error submitting {serviceType} booking request"
             });
         }
     }
 
-    [HttpGet("track/{referenceNumber}")]
-    public async Task<ActionResult<TrackBookingResponse>> TrackBooking(string referenceNumber)
+    private async Task SendBookingNotifications(BookingRequest booking, User user)
     {
         try
         {
-            // Get user ID from JWT token
-            var userId = User.FindFirst("Id")?.Value;
+            var bookingActor = _actorSystem.ActorSelection("/user/booking-notification-actor");
+            var notificationMessage = new NewBookingMessage
+            {
+                ReferenceNumber = booking.ReferenceNumber,
+                CustomerName = user.FullName,
+                CustomerEmail = user.Email,
+                CustomerPhone = user.PhoneNumber,
+                ServiceType = booking.ServiceType, // No cast needed since both use BookingType now
+                Urgency = booking.Urgency
+            };
             
-            if (string.IsNullOrEmpty(userId))
-            {
-                return Unauthorized(new TrackBookingResponse
-                {
-                    Success = false,
-                    Message = "Invalid authentication token"
-                });
-            }
-
-            // Find booking by reference number and user ID for security
-            var booking = await _context.BookingRequests
-                .Include(b => b.StatusHistory)
-                .FirstOrDefaultAsync(b => b.ReferenceNumber == referenceNumber && b.UserId == userId);
-
-            if (booking == null)
-            {
-                return NotFound(new TrackBookingResponse
-                {
-                    Success = false,
-                    Message = "Booking not found or you don't have access to this booking"
-                });
-            }
-
-            return Ok(new TrackBookingResponse
-            {
-                Success = true,
-                Message = "Booking found",
-                Booking = new BookingTrackingInfo
-                {
-                    Id = booking.Id,
-                    ReferenceNumber = booking.ReferenceNumber,
-                    ServiceType = booking.ServiceType,
-                    Status = booking.Status,
-                    Urgency = booking.Urgency,
-                    CreatedAt = booking.CreatedAt,
-                    UpdatedAt = booking.UpdatedAt,
-                    EstimatedPrice = booking.EstimatedPrice,
-                    FinalPrice = booking.FinalPrice,
-                    Currency = booking.Currency,
-                    AdminNotes = booking.AdminNotes,
-                    StatusHistory = booking.StatusHistory.Select(h => new StatusHistoryInfo
-                    {
-                        FromStatus = h.FromStatus,
-                        ToStatus = h.ToStatus,
-                        Notes = h.Notes,
-                        ChangedAt = h.ChangedAt,
-                        ChangedBy = h.ChangedBy
-                    }).OrderBy(h => h.ChangedAt).ToList()
-                }
-            });
+            bookingActor.Tell(notificationMessage);
+            _logger.LogInformation($"Notification sent for booking: {booking.ReferenceNumber}");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error tracking booking: {ReferenceNumber}", referenceNumber);
-            return StatusCode(500, new TrackBookingResponse
-            {
-                Success = false,
-                Message = "An error occurred while tracking your booking"
-            });
+            _logger.LogError(ex, $"Failed to send notification for booking: {booking.ReferenceNumber}");
         }
     }
 
-    [HttpGet("my-bookings")]
-    public async Task<ActionResult<List<BookingInfo>>> GetMyBookings()
+    private BookingTrackingDto MapToTrackingDto(BookingRequest booking)
     {
-        try
+        return new BookingTrackingDto
         {
-            // Get user ID from JWT token
-            var userId = User.FindFirst("Id")?.Value;
-            
-            if (string.IsNullOrEmpty(userId))
+            Id = booking.Id,
+            ReferenceNumber = booking.ReferenceNumber,
+            ServiceType = booking.ServiceType,
+            Status = booking.Status,
+            Destination = booking.Destination,
+            QuotedAmount = booking.QuotedAmount,
+            FinalAmount = booking.FinalAmount,
+            Currency = booking.Currency,
+            CreatedAt = booking.CreatedAt,
+            TravelDate = booking.TravelDate,
+            ContactEmail = booking.ContactEmail,
+            ContactPhone = booking.ContactPhone,
+            SpecialRequests = booking.SpecialRequests,
+            AdminNotes = booking.AdminNotes,
+            Urgency = booking.Urgency,
+            StatusHistory = booking.StatusHistory.Select(h => new BookingStatusHistoryDto
             {
-                return Unauthorized();
-            }
-
-            // Get all bookings for the user
-            var bookings = await _context.BookingRequests
-                .Where(b => b.UserId == userId)
-                .OrderByDescending(b => b.CreatedAt)
-                .Select(b => new BookingInfo
-                {
-                    Id = b.Id,
-                    ReferenceNumber = b.ReferenceNumber,
-                    ServiceType = b.ServiceType,
-                    Status = b.Status,
-                    Urgency = b.Urgency,
-                    CreatedAt = b.CreatedAt,
-                    EstimatedPrice = b.EstimatedPrice,
-                    FinalPrice = b.FinalPrice,
-                    Currency = b.Currency
-                })
-                .ToListAsync();
-
-            return Ok(bookings);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving user bookings");
-            return StatusCode(500, "An error occurred while retrieving your bookings");
-        }
+                FromStatus = h.FromStatus,
+                ToStatus = h.ToStatus,
+                Notes = h.Notes,
+                ChangedAt = h.ChangedAt,
+                ChangedBy = h.ChangedBy
+            }).OrderBy(h => h.ChangedAt).ToList(),
+            Documents = booking.Documents.Select(d => new BookingDocumentDto
+            {
+                Id = d.Id,
+                DocumentType = d.DocumentType,
+                FileName = d.FileName,
+                FileUrl = d.FileUrl,
+                FileSize = d.FileSize,
+                UploadedAt = d.UploadedAt,
+                IsRequired = d.IsRequired,
+                IsVerified = d.IsVerified
+            }).ToList()
+        };
     }
 
-    private static string GenerateReferenceNumber(ServiceType serviceType)
+    private static string GenerateReferenceNumber(BookingType serviceType)
     {
         var prefix = serviceType switch
         {
-            ServiceType.Flight => "FL",
-            ServiceType.Hotel => "HT",
-            ServiceType.Tour => "TR",
-            ServiceType.Visa => "VS",
-            ServiceType.CompletePackage => "CP",
+            BookingType.Flight => "FL",
+            BookingType.Hotel => "HT",
+            BookingType.Tour => "TR",
+            BookingType.Visa => "VS",
+            BookingType.CompletePackage => "CP",
             _ => "BK"
         };
 

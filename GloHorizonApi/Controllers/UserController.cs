@@ -185,7 +185,7 @@ public class UserController : ControllerBase
                     ReferenceNumber = b.ReferenceNumber,
                     ServiceType = b.ServiceType.ToString(),
                     Status = b.Status.ToString(),
-                    TotalAmount = b.FinalPrice ?? b.EstimatedPrice ?? 0,
+                    TotalAmount = b.FinalAmount ?? b.QuotedAmount ?? 0,
                     CreatedAt = b.CreatedAt
                 })
                 .ToList();
@@ -193,9 +193,9 @@ public class UserController : ControllerBase
             var stats = new BookingStats
             {
                 TotalBookings = allBookings.Count,
-                PendingBookings = allBookings.Count(b => b.Status == BookingStatus.Pending || b.Status == BookingStatus.UnderReview || b.Status == BookingStatus.Processing),
+                PendingBookings = allBookings.Count(b => b.Status == BookingStatus.Submitted || b.Status == BookingStatus.UnderReview || b.Status == BookingStatus.Processing),
                 ConfirmedBookings = allBookings.Count(b => b.Status == BookingStatus.Confirmed),
-                TotalSpent = allBookings.Sum(b => b.FinalPrice ?? b.EstimatedPrice ?? 0)
+                TotalSpent = allBookings.Sum(b => b.FinalAmount ?? b.QuotedAmount ?? 0)
             };
 
             var response = new BookingHistoryResponse
@@ -239,7 +239,7 @@ public class UserController : ControllerBase
             // Check for active bookings
             var activeBookings = await _context.BookingRequests
                 .Where(b => b.UserId == userId && 
-                           (b.Status == BookingStatus.Pending || 
+                           (b.Status == BookingStatus.Submitted || 
                             b.Status == BookingStatus.UnderReview ||
                             b.Status == BookingStatus.Processing))
                 .CountAsync();

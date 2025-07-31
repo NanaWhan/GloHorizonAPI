@@ -17,6 +17,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Admin> Admins { get; set; }
     public DbSet<BookingRequest> BookingRequests { get; set; }
     public DbSet<BookingStatusHistory> BookingStatusHistories { get; set; }
+    public DbSet<BookingDocument> BookingDocuments { get; set; }
     public DbSet<TravelPackage> TravelPackages { get; set; }
     public DbSet<Discount> Discounts { get; set; }
     public DbSet<OtpVerification> OtpVerifications { get; set; }
@@ -36,6 +37,12 @@ public class ApplicationDbContext : DbContext
             .HasOne(h => h.BookingRequest)
             .WithMany(b => b.StatusHistory)
             .HasForeignKey(h => h.BookingRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<BookingDocument>()
+            .HasOne(d => d.BookingRequest)
+            .WithMany(b => b.Documents)
+            .HasForeignKey(d => d.BookingRequestId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // Configure indexes for performance
@@ -58,6 +65,15 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<BookingRequest>()
             .HasIndex(b => new { b.UserId, b.CreatedAt });
 
+        modelBuilder.Entity<BookingRequest>()
+            .HasIndex(b => b.ServiceType);
+
+        modelBuilder.Entity<BookingRequest>()
+            .HasIndex(b => b.Status);
+
+        modelBuilder.Entity<BookingDocument>()
+            .HasIndex(d => new { d.BookingRequestId, d.DocumentType });
+
         modelBuilder.Entity<TravelPackage>()
             .HasIndex(p => new { p.IsActive, p.IsFeatured, p.DisplayOrder });
 
@@ -69,11 +85,11 @@ public class ApplicationDbContext : DbContext
 
         // Configure decimal precision
         modelBuilder.Entity<BookingRequest>()
-            .Property(b => b.EstimatedPrice)
+            .Property(b => b.QuotedAmount)
             .HasPrecision(10, 2);
 
         modelBuilder.Entity<BookingRequest>()
-            .Property(b => b.FinalPrice)
+            .Property(b => b.FinalAmount)
             .HasPrecision(10, 2);
 
         modelBuilder.Entity<TravelPackage>()

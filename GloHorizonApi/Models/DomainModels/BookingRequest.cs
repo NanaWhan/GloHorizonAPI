@@ -16,41 +16,72 @@ public class BookingRequest
     public string UserId { get; set; } = string.Empty;
     
     [Required]
-    public ServiceType ServiceType { get; set; }
+    public BookingType ServiceType { get; set; } // Updated enum name
     
     [Required]
-    public BookingStatus Status { get; set; } = BookingStatus.Pending;
-    
-    // JSON data containing the specific booking details
-    [Required]
-    [Column(TypeName = "jsonb")]
-    public string BookingData { get; set; } = string.Empty;
+    public BookingStatus Status { get; set; } = BookingStatus.Submitted; // Updated default
     
     // Pricing information  
-    public decimal? EstimatedPrice { get; set; }
-    public decimal? FinalPrice { get; set; }
+    public decimal? QuotedAmount { get; set; }
+    public decimal? FinalAmount { get; set; }
     public string? Currency { get; set; } = "GHS";
+    
+    // Travel information
+    public DateTime? TravelDate { get; set; }
+    
+    [MaxLength(200)]
+    public string? Destination { get; set; }
+    
+    // Contact information
+    [Required]
+    [MaxLength(255)]
+    public string ContactEmail { get; set; } = string.Empty;
+    
+    [Required]
+    [MaxLength(20)]
+    public string ContactPhone { get; set; } = string.Empty;
     
     // Timestamps
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     
-    // Admin notes
+    // Notes and requests
+    [MaxLength(1000)]
+    public string? SpecialRequests { get; set; }
+    
     [MaxLength(1000)]
     public string? AdminNotes { get; set; }
     
     // Urgency level
     public UrgencyLevel Urgency { get; set; } = UrgencyLevel.Standard;
     
+    // JSON fields for service-specific data
+    [Column(TypeName = "jsonb")]
+    public string? FlightDetails { get; set; }
+    
+    [Column(TypeName = "jsonb")]
+    public string? HotelDetails { get; set; }
+    
+    [Column(TypeName = "jsonb")]
+    public string? TourDetails { get; set; }
+    
+    [Column(TypeName = "jsonb")]
+    public string? VisaDetails { get; set; }
+    
+    [Column(TypeName = "jsonb")]
+    public string? PackageDetails { get; set; }
+    
     // Navigation properties
     [ForeignKey("UserId")]
     public virtual User User { get; set; } = null!;
     
     public virtual ICollection<BookingStatusHistory> StatusHistory { get; set; } = new List<BookingStatusHistory>();
+    
+    public virtual ICollection<BookingDocument> Documents { get; set; } = new List<BookingDocument>();
 }
 
-public enum ServiceType
+public enum BookingType
 {
     Flight = 1,
     Hotel = 2, 
@@ -61,16 +92,14 @@ public enum ServiceType
 
 public enum BookingStatus
 {
-    Pending = 1,
+    Submitted = 1,
     UnderReview = 2,
-    QuoteReady = 3,
-    QuoteAccepted = 4,
-    PaymentPending = 5,
-    Processing = 6,
-    Confirmed = 7,
-    Completed = 8,
-    Cancelled = 9,
-    Rejected = 10
+    QuoteProvided = 3,
+    PaymentPending = 4,
+    Processing = 5,
+    Confirmed = 6,
+    Completed = 7,
+    Cancelled = 8
 }
 
 public enum UrgencyLevel
