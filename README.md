@@ -5,13 +5,14 @@ A comprehensive .NET 8 Web API for managing travel bookings, payments, and user 
 ## Features
 
 - **User Management**: Registration, authentication, and profile management
-- **Travel Packages**: Browse and manage travel packages
+- **Quote Request System**: 5 service types with instant admin notifications (NEW - LIVE)
+- **Travel Packages**: Browse and manage travel packages  
 - **Booking System**: Complete booking workflow with status tracking
 - **Payment Processing**: PayStack integration for secure payments
 - **Admin Dashboard**: Administrative controls and monitoring
-- **Notifications**: SMS and email notifications via Mnotify and SMTP
+- **Real-time Notifications**: SMS and email notifications via Mnotify and SMTP
 - **Image Management**: Supabase storage integration
-- **Real-time Processing**: Akka.NET actor system for background tasks
+- **Actor System**: Akka.NET for real-time quote notifications and background processing
 
 ## Tech Stack
 
@@ -105,6 +106,15 @@ The Docker setup includes:
 - `GET /api/travelpackage/{id}` - Get package by ID
 - `POST /api/travelpackage` - Create package (Admin)
 
+### Quote Requests (NEW - LIVE)
+- `POST /api/quote/hotel` - Submit hotel quote request
+- `POST /api/quote/flight` - Submit flight quote request  
+- `POST /api/quote/tour` - Submit tour quote request
+- `POST /api/quote/visa` - Submit visa quote request
+- `POST /api/quote/complete-package` - Submit complete package quote request
+- `GET /api/quote/track/{referenceNumber}` - Track quote status (public)
+- `GET /api/quote/my-quotes` - Get user's quotes (authenticated)
+
 ### Bookings
 - `POST /api/booking/submit` - Submit booking request
 - `GET /api/booking/track/{trackingNumber}` - Track booking status
@@ -118,12 +128,109 @@ The Docker setup includes:
 - `GET /api/admin/bookings` - Get all bookings
 - `PUT /api/admin/bookings/{id}/status` - Update booking status
 
+## Quote API Integration Guide (FRONTEND TEAM)
+
+### 🚀 **Live Endpoints Ready for Frontend Integration**
+
+All quote endpoints are **LIVE** and ready for production use:
+
+**Base URL**: `http://localhost:5080` (Development) | `https://your-domain.com` (Production)
+
+### **1. Hotel Quote Request**
+```javascript
+POST /api/quote/hotel
+Content-Type: application/json
+
+{
+  "hotelDetails": {
+    "destination": "Dubai",
+    "checkInDate": "2024-09-15T00:00:00Z",
+    "checkOutDate": "2024-09-20T00:00:00Z", 
+    "rooms": 1,
+    "adultGuests": 2,
+    "childGuests": 0,
+    "roomType": "deluxe",
+    "starRating": "4-star",
+    "amenities": ["pool", "spa", "gym"]
+  },
+  "contactEmail": "customer@example.com",
+  "contactPhone": "+233123456789",
+  "contactName": "John Doe",
+  "specialRequests": "Sea view room preferred",
+  "urgency": 1  // 1=Standard, 2=Urgent, 3=Emergency
+}
+```
+
+**Response**:
+```javascript
+{
+  "success": true,
+  "message": "Hotel quote request submitted successfully. You will receive a quote within 24 hours.",
+  "referenceNumber": "QHT17054939887", 
+  "quote": {
+    "id": 3,
+    "referenceNumber": "QHT17054939887",
+    "serviceType": 2,
+    "status": 1,
+    "destination": "Dubai",
+    "createdAt": "2025-07-31T17:05:25Z",
+    "contactEmail": "customer@example.com",
+    "contactPhone": "+233123456789",
+    "contactName": "John Doe",
+    "specialRequests": "Sea view room preferred",
+    "urgency": 1,
+    "statusHistory": [...]
+  }
+}
+```
+
+### **2. Flight Quote Request** 
+```javascript
+POST /api/quote/flight
+// Similar structure with flightDetails object
+```
+
+### **3. Quote Tracking (Public - No Auth Required)**
+```javascript
+GET /api/quote/track/{referenceNumber}
+
+// Example: GET /api/quote/track/QHT17054939887
+```
+
+### **4. User's Quotes (Authenticated)**
+```javascript
+GET /api/quote/my-quotes
+Authorization: Bearer <jwt-token>
+```
+
+### **⚡ Real-time Notifications**
+- **Admin notifications**: Sent instantly via email/SMS on every quote request
+- **Customer confirmations**: Sent with reference number for tracking
+- **Status updates**: Automated notifications on quote status changes
+
+### **📱 Frontend Integration Notes**
+- **No authentication required** for quote submissions (guest-friendly)
+- **Reference numbers** provided for easy tracking  
+- **Comprehensive validation** with helpful error messages
+- **Mobile-optimized** JSON structure
+- **All 5 service types** supported: Hotel, Flight, Tour, Visa, Complete Package
+
+### **🧪 Test Data**
+Use these working reference numbers for testing:
+- Hotel: `QHT17054939887`
+- Flight: `QFL17054981853` 
+- Tour: `QTR17055023233`
+- Visa: `QVS17055066240`
+- Package: `QCP17055107498`
+
 ## Database Schema
 
 The application uses the following main entities:
 
 - **User**: User accounts and profiles
-- **Admin**: Administrative accounts
+- **Admin**: Administrative accounts  
+- **QuoteRequest**: Quote requests with real-time notifications (NEW)
+- **QuoteStatusHistory**: Quote status tracking and audit trail (NEW)
 - **TravelPackage**: Travel package information
 - **BookingRequest**: Customer booking requests
 - **BookingStatusHistory**: Booking status tracking
@@ -131,9 +238,11 @@ The application uses the following main entities:
 
 ## Background Services
 
-- **PaymentVerificationService**: Monitors and verifies pending payments
+- **QuoteNotificationActor**: Handles real-time quote notifications to admins (NEW - LIVE)
+- **PaymentVerificationService**: Monitors and verifies pending payments  
 - **BookingNotificationActor**: Handles booking-related notifications
 - **PaymentActor**: Processes payment workflows
+- **OtpCleanupService**: Cleans up expired OTP records
 
 ## Security Features
 
