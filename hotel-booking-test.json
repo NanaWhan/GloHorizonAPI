@@ -1,0 +1,18 @@
+{
+  "hotelDetails": {
+    "destination": "Accra, Ghana",
+    "checkInDate": "2025-03-15T00:00:00Z",
+    "checkOutDate": "2025-03-18T00:00:00Z",
+    "rooms": 1,
+    "adultGuests": 2,
+    "childGuests": 0,
+    "roomType": "standard",
+    "preferredHotel": "Movenpick Ambassador Hotel",
+    "starRating": "4-star",
+    "amenities": ["pool", "gym", "wifi"]
+  },
+  "contactEmail": "test@example.com",
+  "contactPhone": "0541458512",
+  "specialRequests": "Late check-in request",
+  "urgency": 0
+}

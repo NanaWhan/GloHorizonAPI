@@ -1,0 +1,17 @@
+{
+  "tourDetails": {
+    "tourPackage": "Ghana Explorer Package",
+    "destination": "Accra, Ghana",
+    "startDate": "2025-03-15T00:00:00Z",
+    "endDate": "2025-03-20T00:00:00Z",
+    "travelers": 2,
+    "accommodationType": "standard",
+    "tourType": "group",
+    "activities": ["City tour", "Cultural sites", "Beach visit"],
+    "mealPlan": "breakfast"
+  },
+  "contactEmail": "test@example.com",
+  "contactPhone": "0541458512",
+  "specialRequests": "Please include vegetarian meal options",
+  "urgency": 0
+}

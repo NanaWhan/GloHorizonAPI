@@ -1,0 +1,32 @@
+{
+  "visaDetails": {
+    "visaType": "Tourist Visa",
+    "destinationCountry": "United States",
+    "processingType": "standard",
+    "intendedTravelDate": "2025-03-15T00:00:00Z",
+    "durationOfStay": 30,
+    "purposeOfVisit": "Tourism and vacation",
+    "passportNumber": "A12345678",
+    "passportExpiryDate": "2030-01-01T00:00:00Z",
+    "nationality": "Ghanaian",
+    "hasPreviousVisa": false,
+    "requiredDocuments": [
+      {
+        "documentType": "passport",
+        "documentName": "Valid Passport",
+        "isRequired": true,
+        "isUploaded": false
+      },
+      {
+        "documentType": "photo",
+        "documentName": "Passport Photo",
+        "isRequired": true,
+        "isUploaded": false
+      }
+    ]
+  },
+  "contactEmail": "test@example.com",
+  "contactPhone": "0541458512",
+  "specialRequests": "Please expedite if possible",
+  "urgency": 0
+}
