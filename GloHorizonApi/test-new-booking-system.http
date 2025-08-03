@@ -1,0 +1,259 @@
+### 🎉 ENTERPRISE BOOKING SYSTEM - COMPLETE API TESTS ###
+### All endpoints exactly as requested by frontend engineers ###
+
+# Step 1: Register/Login to get JWT token first
+POST http://localhost:5080/api/Auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "Test123!"
+}
+
+### Copy the token from above response and use it in Authorization header below ###
+
+### ✈️ FLIGHT BOOKING SUBMISSION ###
+POST http://localhost:5080/api/Booking/flight
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "flightDetails": {
+    "tripType": "round-trip",
+    "departureCity": "Accra, Ghana",
+    "arrivalCity": "London, UK",
+    "departureDate": "2024-03-15T00:00:00Z",
+    "returnDate": "2024-03-25T00:00:00Z",
+    "adultPassengers": 2,
+    "childPassengers": 0,
+    "infantPassengers": 0,
+    "preferredClass": "economy",
+    "preferredAirline": "British Airways",
+    "passengers": [
+      {
+        "firstName": "John",
+        "lastName": "Doe",
+        "dateOfBirth": "1990-01-01",
+        "passportNumber": "A12345678",
+        "nationality": "Ghanaian"
+      },
+      {
+        "firstName": "Jane",
+        "lastName": "Doe",
+        "dateOfBirth": "1992-05-15",
+        "passportNumber": "A87654321",
+        "nationality": "Ghanaian"
+      }
+    ]
+  },
+  "contactEmail": "john.doe@example.com",
+  "contactPhone": "0241234567",
+  "specialRequests": "Window seats preferred, vegetarian meals",
+  "urgency": 2
+}
+
+### 🏨 HOTEL BOOKING SUBMISSION ###
+POST http://localhost:5080/api/Booking/hotel
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "hotelDetails": {
+    "destination": "London, UK",
+    "checkInDate": "2024-03-15T00:00:00Z",
+    "checkOutDate": "2024-03-25T00:00:00Z",
+    "rooms": 1,
+    "adultGuests": 2,
+    "childGuests": 0,
+    "roomType": "deluxe",
+    "preferredHotel": "Hilton London",
+    "starRating": "4-star",
+    "amenities": ["pool", "gym", "spa", "wifi"]
+  },
+  "contactEmail": "john.doe@example.com",
+  "contactPhone": "0241234567",
+  "specialRequests": "High floor room with city view",
+  "urgency": 1
+}
+
+### 🗺️ TOUR BOOKING SUBMISSION ###
+POST http://localhost:5080/api/Booking/tour
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "tourDetails": {
+    "tourPackage": "London Explorer Package",
+    "destination": "London, UK",
+    "startDate": "2024-03-16T00:00:00Z",
+    "endDate": "2024-03-20T00:00:00Z",
+    "travelers": 2,
+    "accommodationType": "standard",
+    "tourType": "group",
+    "activities": ["City Tour", "Thames Cruise", "Museum Visits", "Shopping"],
+    "mealPlan": "breakfast"
+  },
+  "contactEmail": "john.doe@example.com",
+  "contactPhone": "0241234567",
+  "specialRequests": "English-speaking guide preferred",
+  "urgency": 1
+}
+
+### 📄 VISA BOOKING SUBMISSION ###
+POST http://localhost:5080/api/Booking/visa
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "visaDetails": {
+    "visaType": "Tourist Visa",
+    "destinationCountry": "United Kingdom",
+    "processingType": "standard",
+    "intendedTravelDate": "2024-03-15T00:00:00Z",
+    "durationOfStay": 10,
+    "purposeOfVisit": "Tourism",
+    "passportNumber": "A12345678",
+    "passportExpiryDate": "2029-01-01T00:00:00Z",
+    "nationality": "Ghanaian",
+    "hasPreviousVisa": false,
+    "requiredDocuments": [
+      {
+        "documentType": "Passport Photo",
+        "documentName": "passport_photo.jpg",
+        "isRequired": true,
+        "isUploaded": false
+      },
+      {
+        "documentType": "Bank Statement",
+        "documentName": "bank_statement.pdf",
+        "isRequired": true,
+        "isUploaded": false
+      }
+    ]
+  },
+  "contactEmail": "john.doe@example.com",
+  "contactPhone": "0241234567",
+  "specialRequests": "Need assistance with document preparation",
+  "urgency": 2
+}
+
+### 📦 COMPLETE PACKAGE SUBMISSION ###
+POST http://localhost:5080/api/Booking/complete-package
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "packageDetails": {
+    "flightDetails": {
+      "tripType": "round-trip",
+      "departureCity": "Accra, Ghana",
+      "arrivalCity": "Dubai, UAE",
+      "departureDate": "2024-04-01T00:00:00Z",
+      "returnDate": "2024-04-10T00:00:00Z",
+      "adultPassengers": 2,
+      "preferredClass": "business",
+      "passengers": [
+        {
+          "firstName": "John",
+          "lastName": "Smith",
+          "dateOfBirth": "1985-03-10",
+          "nationality": "Ghanaian"
+        }
+      ]
+    },
+    "hotelDetails": {
+      "destination": "Dubai, UAE",
+      "checkInDate": "2024-04-01T00:00:00Z",
+      "checkOutDate": "2024-04-10T00:00:00Z",
+      "rooms": 1,
+      "adultGuests": 2,
+      "roomType": "suite",
+      "starRating": "5-star",
+      "amenities": ["pool", "spa", "beach-access"]
+    },
+    "visaDetails": {
+      "visaType": "Tourist Visa",
+      "destinationCountry": "United Arab Emirates",
+      "processingType": "express",
+      "intendedTravelDate": "2024-04-01T00:00:00Z",
+      "durationOfStay": 9,
+      "purposeOfVisit": "Tourism"
+    },
+    "packageType": "luxury-honeymoon",
+    "estimatedBudget": 15000,
+    "additionalServices": ["airport-transfers", "travel-insurance", "private-guide"]
+  },
+  "contactEmail": "john.smith@example.com",
+  "contactPhone": "0501234567",
+  "specialRequests": "Honeymoon package with romantic arrangements",
+  "urgency": 1
+}
+
+### 📊 BOOKING TRACKING ###
+### Replace {referenceNumber} with actual reference from booking response ###
+GET http://localhost:5080/api/Booking/track/GHFL2024012312341234
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### 📋 GET ALL USER BOOKINGS ###
+GET http://localhost:5080/api/Booking/my-bookings
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### 🎯 EXPECTED RESPONSES ###
+
+# Flight Booking Response:
+{
+  "success": true,
+  "message": "Flight booking submitted successfully",
+  "referenceNumber": "GHFL20240731123456789",
+  "booking": {
+    "id": 1,
+    "referenceNumber": "GHFL20240731123456789",
+    "serviceType": 1,
+    "status": 1,
+    "destination": "London, UK",
+    "quotedAmount": null,
+    "finalAmount": null,
+    "currency": "GHS",
+    "createdAt": "2024-01-31T12:34:56Z",
+    "travelDate": "2024-03-15T00:00:00Z",
+    "contactEmail": "john.doe@example.com",
+    "contactPhone": "0241234567",
+    "specialRequests": "Window seats preferred, vegetarian meals",
+    "adminNotes": null,
+    "urgency": 2,
+    "statusHistory": [
+      {
+        "fromStatus": 1,
+        "toStatus": 1,
+        "notes": "Flight booking request submitted",
+        "changedAt": "2024-01-31T12:34:56Z",
+        "changedBy": "System"
+      }
+    ],
+    "documents": []
+  }
+}
+
+### 🏆 REFERENCE NUMBER FORMATS ###
+# Flight: GHFL{timestamp}{random}
+# Hotel: GHHT{timestamp}{random}  
+# Tour: GHTR{timestamp}{random}
+# Visa: GHVS{timestamp}{random}
+# Complete Package: GHCP{timestamp}{random}
+
+### 📈 BOOKING STATUS FLOW ###
+# 1. Submitted (Initial)
+# 2. UnderReview (Admin reviewing)
+# 3. QuoteProvided (Quote sent to customer)  
+# 4. PaymentPending (Waiting for payment)
+# 5. Processing (Processing booking)
+# 6. Confirmed (Booking confirmed)
+# 7. Completed (Service delivered)
+# 8. Cancelled (Booking cancelled)
+
+### 🎉 FRONTEND INTEGRATION READY! ###
+# All endpoints match the exact specification provided by frontend engineers
+# Service-specific models with full validation
+# Comprehensive booking tracking and management
+# Document upload support for visa applications
+# Real-time notifications via actor system 

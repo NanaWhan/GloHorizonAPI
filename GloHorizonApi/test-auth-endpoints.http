@@ -1,0 +1,119 @@
+### Test Authentication Endpoints - Per Specification
+
+@baseUrl = http://localhost:5080
+@token = 
+
+### 1. USER REGISTRATION - POST /api/auth/register
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "John",
+  "lastName": "Doe", 
+  "email": "john.test@example.com",
+  "phoneNumber": "+233123456789",
+  "password": "password123",
+  "dateOfBirth": "1990-01-01",
+  "acceptMarketing": true
+}
+
+### 2. EMAIL/PASSWORD LOGIN - POST /api/auth/login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "john.test@example.com",
+  "password": "password123"
+}
+
+### 3. OTP REQUEST (EXISTING USERS ONLY) - POST /api/auth/request-otp
+POST {{baseUrl}}/api/auth/request-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233123456789"
+}
+
+### 4. OTP REQUEST (NON-EXISTENT USER - SHOULD RETURN 404)
+POST {{baseUrl}}/api/auth/request-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233999999999"
+}
+
+### 5. OTP VERIFICATION (LOGIN) - POST /api/auth/verify-otp
+POST {{baseUrl}}/api/auth/verify-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233123456789",
+  "otpCode": "123456"
+}
+
+### 6. OTP VERIFICATION (NON-EXISTENT USER - SHOULD RETURN 404)
+POST {{baseUrl}}/api/auth/verify-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233999999999",
+  "otpCode": "123456"
+}
+
+### 7. USER PROFILE - GET /api/user/profile
+GET {{baseUrl}}/api/user/profile
+Authorization: Bearer {{token}}
+
+### 8. USER BOOKING HISTORY - GET /api/user/booking-history  
+GET {{baseUrl}}/api/user/booking-history
+Authorization: Bearer {{token}}
+
+### 9. LOGOUT - POST /api/auth/logout
+POST {{baseUrl}}/api/auth/logout
+Authorization: Bearer {{token}}
+
+### 10. DUPLICATE EMAIL REGISTRATION (SHOULD FAIL)
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "Jane",
+  "lastName": "Smith",
+  "email": "john.test@example.com",
+  "phoneNumber": "+233987654321", 
+  "password": "password123",
+  "dateOfBirth": "1992-01-01",
+  "acceptMarketing": false
+}
+
+### 11. DUPLICATE PHONE REGISTRATION (SHOULD FAIL)
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "Bob",
+  "lastName": "Wilson",
+  "email": "bob@example.com",
+  "phoneNumber": "+233123456789",
+  "password": "password123", 
+  "dateOfBirth": "1988-01-01",
+  "acceptMarketing": false
+}
+
+### 12. INVALID EMAIL LOGIN (SHOULD RETURN 401)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "invalid@example.com",
+  "password": "password123"
+}
+
+### 13. WRONG PASSWORD LOGIN (SHOULD RETURN 401)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "john.test@example.com",
+  "password": "wrongpassword"
+} 

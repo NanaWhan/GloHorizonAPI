@@ -1,0 +1,46 @@
+### Test User Registration
+POST http://localhost:5080/api/auth/register
+Content-Type: application/json
+
+{
+  "fullName": "John Doe",
+  "email": "john.doe@example.com",
+  "phoneNumber": "+233245678901",
+  "password": "Password123!",
+  "confirmPassword": "Password123!"
+}
+
+### Test User Login
+POST http://localhost:5080/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "john.doe@example.com",
+  "password": "Password123!"
+}
+
+### Test Request OTP
+POST http://localhost:5080/api/auth/request-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233245678901"
+}
+
+### Test Verify OTP (Replace with actual OTP from logs)
+POST http://localhost:5080/api/auth/verify-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233245678901",
+  "otpCode": "123456"
+}
+
+### Test Admin Login
+POST http://localhost:5080/api/admin/login
+Content-Type: application/json
+
+{
+  "email": "admin@glohorizon.com",
+  "password": "Admin123!"
+}

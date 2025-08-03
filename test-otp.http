@@ -1,0 +1,16 @@
+### Step 1: Request OTP
+POST http://localhost:5080/api/auth/request-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233456512"
+}
+
+### Step 2: Verify OTP (use the OTP from logs)
+POST http://localhost:5080/api/auth/verify-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233456512",
+  "otpCode": "REPLACE_WITH_ACTUAL_OTP"
+} 

@@ -1,0 +1,24 @@
+### Step 1: Request OTP (Run this first)
+POST http://localhost:5080/api/auth/request-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233456512"
+}
+
+### Step 2: Verify OTP (Copy the OTP from Step 1 response and paste below)
+POST http://localhost:5080/api/auth/verify-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233456512",
+  "otpCode": "PASTE_OTP_HERE"
+}
+
+### Alternative Test with Different Phone Number
+POST http://localhost:5080/api/auth/request-otp
+Content-Type: application/json
+
+{
+  "phoneNumber": "+233999888777"
+} 
