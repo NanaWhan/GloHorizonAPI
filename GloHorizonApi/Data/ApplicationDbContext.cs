@@ -18,9 +18,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<BookingRequest> BookingRequests { get; set; }
     public DbSet<BookingStatusHistory> BookingStatusHistories { get; set; }
     public DbSet<BookingDocument> BookingDocuments { get; set; }
+    public DbSet<QuoteRequest> QuoteRequests { get; set; }
+    public DbSet<QuoteStatusHistory> QuoteStatusHistories { get; set; }
     public DbSet<TravelPackage> TravelPackages { get; set; }
     public DbSet<Discount> Discounts { get; set; }
     public DbSet<OtpVerification> OtpVerifications { get; set; }
+    public DbSet<NewsletterSubscriber> NewsletterSubscribers { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,6 +46,25 @@ public class ApplicationDbContext : DbContext
             .HasOne(d => d.BookingRequest)
             .WithMany(b => b.Documents)
             .HasForeignKey(d => d.BookingRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Configure Quote relationships
+        modelBuilder.Entity<QuoteRequest>()
+            .HasOne(q => q.User)
+            .WithMany()
+            .HasForeignKey(q => q.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<QuoteRequest>()
+            .HasOne(q => q.BookingRequest)
+            .WithOne()
+            .HasForeignKey<QuoteRequest>(q => q.BookingRequestId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<QuoteStatusHistory>()
+            .HasOne(h => h.QuoteRequest)
+            .WithMany(q => q.StatusHistory)
+            .HasForeignKey(h => h.QuoteRequestId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // Configure indexes for performance
@@ -83,6 +105,34 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<OtpVerification>()
             .HasIndex(o => o.ExpiresAt);
 
+        // Quote Request indexes
+        modelBuilder.Entity<QuoteRequest>()
+            .HasIndex(q => q.ReferenceNumber)
+            .IsUnique();
+
+        modelBuilder.Entity<QuoteRequest>()
+            .HasIndex(q => new { q.UserId, q.CreatedAt });
+
+        // Newsletter Subscriber configuration
+        modelBuilder.Entity<NewsletterSubscriber>()
+            .HasIndex(n => n.PhoneNumber)
+            .IsUnique();
+
+        modelBuilder.Entity<NewsletterSubscriber>()
+            .HasIndex(n => new { n.IsActive, n.SubscribedAt });
+
+        modelBuilder.Entity<QuoteRequest>()
+            .HasIndex(q => q.ServiceType);
+
+        modelBuilder.Entity<QuoteRequest>()
+            .HasIndex(q => q.Status);
+
+        modelBuilder.Entity<QuoteRequest>()
+            .HasIndex(q => q.ContactEmail);
+
+        modelBuilder.Entity<QuoteRequest>()
+            .HasIndex(q => new { q.Status, q.CreatedAt });
+
         // Configure decimal precision
         modelBuilder.Entity<BookingRequest>()
             .Property(b => b.QuotedAmount)
@@ -94,6 +144,11 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<TravelPackage>()
             .Property(p => p.BasePrice)
+            .HasPrecision(10, 2);
+
+        // Quote Request decimal precision
+        modelBuilder.Entity<QuoteRequest>()
+            .Property(q => q.QuotedAmount)
             .HasPrecision(10, 2);
     }
 } 

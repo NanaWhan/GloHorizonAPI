@@ -20,7 +20,7 @@ public class PaymentActor : ReceiveActor
     private readonly HashSet<string> _processedPayments = new HashSet<string>();
     
     // Admin notification phone numbers
-    private readonly string[] _adminNotificationPhones = { "0249058729", "0201234567" }; // Configure these
+    private readonly string[] _adminNotificationPhones = { "0205078908", "0240464248" }; // Configure these
 
     public PaymentActor(
         IServiceProvider serviceProvider,

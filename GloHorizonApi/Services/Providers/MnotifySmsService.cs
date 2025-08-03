@@ -133,6 +133,64 @@ public class MnotifySmsService : ISmsService
         return await SendSmsAsync(phoneNumber, adminMessage);
     }
 
+    public async Task<SmsResponse> SendWelcomeSmsAsync(string phoneNumber, string firstName)
+    {
+        var message = $"Welcome to Global Horizons Travel, {firstName}! Thank you for joining us. We're excited to help you explore the world. Visit our website to discover amazing travel packages and start your next adventure!";
+        return await SendSmsAsync(phoneNumber, message);
+    }
+
+    public async Task<BroadcastSmsResponse> SendBroadcastSmsAsync(List<string> phoneNumbers, string message)
+    {
+        var response = new BroadcastSmsResponse
+        {
+            TotalRecipients = phoneNumbers.Count,
+            SuccessfulSends = 0,
+            FailedSends = 0,
+            FailedNumbers = new(),
+            Errors = new()
+        };
+
+        _logger.LogInformation("Starting broadcast SMS to {Count} recipients", phoneNumbers.Count);
+
+        foreach (var phoneNumber in phoneNumbers)
+        {
+            try
+            {
+                var smsResult = await SendSmsAsync(phoneNumber, message);
+                
+                if (smsResult.Success)
+                {
+                    response.SuccessfulSends++;
+                    _logger.LogDebug("Broadcast SMS sent successfully to {PhoneNumber}", phoneNumber);
+                }
+                else
+                {
+                    response.FailedSends++;
+                    response.FailedNumbers.Add(phoneNumber);
+                    response.Errors.Add($"{phoneNumber}: {smsResult.Error}");
+                    _logger.LogWarning("Failed to send broadcast SMS to {PhoneNumber}: {Error}", phoneNumber, smsResult.Error);
+                }
+
+                // Add small delay between sends to avoid rate limiting
+                await Task.Delay(500);
+            }
+            catch (Exception ex)
+            {
+                response.FailedSends++;
+                response.FailedNumbers.Add(phoneNumber);
+                response.Errors.Add($"{phoneNumber}: {ex.Message}");
+                _logger.LogError(ex, "Exception while sending broadcast SMS to {PhoneNumber}", phoneNumber);
+            }
+        }
+
+        response.Success = response.SuccessfulSends > 0;
+        response.Message = $"Broadcast completed: {response.SuccessfulSends} successful, {response.FailedSends} failed out of {response.TotalRecipients} total recipients";
+
+        _logger.LogInformation("Broadcast SMS completed: {Successful}/{Total} successful", response.SuccessfulSends, response.TotalRecipients);
+
+        return response;
+    }
+
     private static string FormatPhoneNumber(string phoneNumber)
     {
         if (string.IsNullOrEmpty(phoneNumber))
