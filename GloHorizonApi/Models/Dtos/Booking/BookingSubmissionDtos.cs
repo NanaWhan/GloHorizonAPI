@@ -157,11 +157,27 @@ public class BookingDocumentDto
     public bool IsVerified { get; set; }
 }
 
-// 🔄 BOOKING LIST RESPONSE
+// 📋 BOOKING LIST RESPONSE
 public class BookingListResponse
 {
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
     public List<BookingTrackingDto> Bookings { get; set; } = new();
     public int TotalCount { get; set; }
+    public int PageNumber { get; set; } = 1;
+    public int PageSize { get; set; } = 10;
+    public int TotalPages { get; set; }
+}
+
+// 🔍 BOOKING FILTER PARAMETERS
+public class BookingFilterDto
+{
+    public int PageNumber { get; set; } = 1;
+    public int PageSize { get; set; } = 10;
+    public BookingStatus? Status { get; set; }
+    public BookingType? ServiceType { get; set; }
+    public UrgencyLevel? Urgency { get; set; }
+    public DateTime? FromDate { get; set; }
+    public DateTime? ToDate { get; set; }
+    public string? SearchTerm { get; set; } // Search in reference number, email, phone, destination
 } 

@@ -9,6 +9,7 @@ using GloHorizonApi.Models.Dtos.Admin;
 using GloHorizonApi.Models.Dtos.Auth;
 using GloHorizonApi.Models.Dtos.Booking;
 using GloHorizonApi.Services.Providers;
+using GloHorizonApi.Services.Interfaces;
 using BCrypt.Net;
 
 namespace GloHorizonApi.Controllers;
@@ -20,15 +21,18 @@ public class AdminController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly JwtTokenGenerator _jwtTokenGenerator;
     private readonly ILogger<AdminController> _logger;
+    private readonly ISmsService _smsService;
 
     public AdminController(
         ApplicationDbContext context,
         JwtTokenGenerator jwtTokenGenerator,
-        ILogger<AdminController> logger)
+        ILogger<AdminController> logger,
+        ISmsService smsService)
     {
         _context = context;
         _jwtTokenGenerator = jwtTokenGenerator;
         _logger = logger;
+        _smsService = smsService;
     }
 
     [HttpPost("login")]
@@ -140,28 +144,53 @@ public class AdminController : ControllerBase
 
     [HttpGet("bookings")]
     [Authorize]
-    public async Task<ActionResult<List<BookingTrackingDto>>> GetAllBookings(
-        [FromQuery] BookingStatus? status = null,
-        [FromQuery] BookingType? serviceType = null,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20)
+    public async Task<ActionResult<BookingListResponse>> GetAllBookings([FromQuery] BookingFilterDto filter)
     {
         try
         {
             var query = _context.BookingRequests
                 .Include(b => b.User)
+                .Include(b => b.StatusHistory)
+                .Include(b => b.Documents)
                 .AsQueryable();
 
-            if (status.HasValue)
-                query = query.Where(b => b.Status == status.Value);
+            // Apply filters
+            if (filter.Status.HasValue)
+                query = query.Where(b => b.Status == filter.Status.Value);
 
-            if (serviceType.HasValue)
-                query = query.Where(b => b.ServiceType == serviceType.Value);
+            if (filter.ServiceType.HasValue)
+                query = query.Where(b => b.ServiceType == filter.ServiceType.Value);
 
+            if (filter.Urgency.HasValue)
+                query = query.Where(b => b.Urgency == filter.Urgency.Value);
+
+            if (filter.FromDate.HasValue)
+                query = query.Where(b => b.CreatedAt >= filter.FromDate.Value);
+
+            if (filter.ToDate.HasValue)
+                query = query.Where(b => b.CreatedAt <= filter.ToDate.Value);
+
+            if (!string.IsNullOrEmpty(filter.SearchTerm))
+            {
+                var searchTerm = filter.SearchTerm.ToLower();
+                query = query.Where(b => 
+                    b.ReferenceNumber.ToLower().Contains(searchTerm) ||
+                    b.ContactEmail.ToLower().Contains(searchTerm) ||
+                    b.ContactPhone.Contains(searchTerm) ||
+                    (b.Destination != null && b.Destination.ToLower().Contains(searchTerm)) ||
+                    (b.User.FirstName + " " + b.User.LastName).ToLower().Contains(searchTerm) ||
+                    (b.SpecialRequests != null && b.SpecialRequests.ToLower().Contains(searchTerm))
+                );
+            }
+
+            // Get total count before pagination
+            var totalCount = await query.CountAsync();
+
+            // Apply pagination
             var bookings = await query
                 .OrderByDescending(b => b.CreatedAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+                .Skip((filter.PageNumber - 1) * filter.PageSize)
+                .Take(filter.PageSize)
                 .Select(b => new BookingTrackingDto
                 {
                     Id = b.Id,
@@ -178,16 +207,43 @@ public class AdminController : ControllerBase
                     Destination = b.Destination,
                     TravelDate = b.TravelDate,
                     SpecialRequests = b.SpecialRequests,
-                    AdminNotes = b.AdminNotes
+                    AdminNotes = b.AdminNotes,
+                    StatusHistory = b.StatusHistory.OrderByDescending(h => h.ChangedAt).Take(3).Select(h => new BookingStatusHistoryDto
+                    {
+                        FromStatus = h.FromStatus,
+                        ToStatus = h.ToStatus,
+                        Notes = h.Notes,
+                        ChangedAt = h.ChangedAt,
+                        ChangedBy = h.ChangedBy
+                    }).ToList(),
+                    Documents = b.Documents.Select(d => new BookingDocumentDto
+                    {
+                        Id = d.Id,
+                        DocumentType = d.DocumentType,
+                        FileName = d.FileName,
+                        FileUrl = d.FileUrl,
+                        UploadedAt = d.UploadedAt
+                    }).ToList()
                 })
                 .ToListAsync();
 
-            return Ok(bookings);
+            var totalPages = (int)Math.Ceiling((double)totalCount / filter.PageSize);
+
+            return Ok(new BookingListResponse
+            {
+                Success = true,
+                Message = "Bookings retrieved successfully",
+                Bookings = bookings,
+                TotalCount = totalCount,
+                PageNumber = filter.PageNumber,
+                PageSize = filter.PageSize,
+                TotalPages = totalPages
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving bookings for admin");
-            return StatusCode(500, "An error occurred retrieving bookings");
+            return StatusCode(500, new BookingListResponse { Success = false, Message = "An error occurred retrieving bookings" });
         }
     }
 
@@ -568,7 +624,150 @@ public class AdminController : ControllerBase
         }
     }
 
+    [HttpPost("create-test-admin")]
+    [AllowAnonymous] // TEMPORARY - for development only
+    public async Task<ActionResult> CreateTestAdmin()
+    {
+        try
+        {
+            // Check if admin already exists
+            var existingAdmin = await _context.Admins
+                .FirstOrDefaultAsync(a => a.Email == "admin@globalhorizons.com");
 
+            if (existingAdmin != null)
+            {
+                return Ok(new 
+                { 
+                    Success = true, 
+                    Message = "Test admin already exists",
+                    Email = "admin@globalhorizons.com",
+                    Role = existingAdmin.Role.ToString()
+                });
+            }
+
+            // Create new test admin
+            var hashedPassword = BCrypt.Net.BCrypt.HashPassword("TestAdmin123!");
+            
+            var testAdmin = new Admin
+            {
+                FullName = "Test Admin",
+                Email = "admin@globalhorizons.com",
+                PhoneNumber = "0205078908",
+                PasswordHash = hashedPassword,
+                Role = AdminRole.SuperAdmin,
+                IsActive = true,
+                ReceiveEmailNotifications = true,
+                ReceiveSmsNotifications = true,
+                CreatedBy = "Development Script"
+            };
+
+            _context.Admins.Add(testAdmin);
+            await _context.SaveChangesAsync();
+
+            return Ok(new 
+            { 
+                Success = true, 
+                Message = "Test admin created successfully!",
+                Email = "admin@globalhorizons.com",
+                Password = "TestAdmin123!",
+                Role = "SuperAdmin",
+                AdminId = testAdmin.Id
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating test admin");
+            return StatusCode(500, new { Success = false, Message = "Error creating test admin: " + ex.Message });
+        }
+    }
+
+    [HttpPost("broadcast-sms")]
+    [Authorize]
+    public async Task<ActionResult<BroadcastSmsResponse>> SendBroadcastSms([FromBody] BroadcastSmsRequest request)
+    {
+        try
+        {
+            // Verify the requesting user is an admin with appropriate permissions
+            var currentAdminRole = User.FindFirst("Role")?.Value;
+            if (currentAdminRole != AdminRole.SuperAdmin.ToString() && currentAdminRole != AdminRole.Admin.ToString())
+            {
+                return Forbid("Only Admins can send broadcast SMS messages");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Message))
+            {
+                return BadRequest(new { Success = false, Message = "Message cannot be empty" });
+            }
+
+            if (request.Message.Length > 1000)
+            {
+                return BadRequest(new { Success = false, Message = "Message cannot exceed 1000 characters" });
+            }
+
+            List<string> phoneNumbers;
+
+            // Determine recipients based on request type
+            switch (request.RecipientType)
+            {
+                case BroadcastRecipientType.AllUsers:
+                    phoneNumbers = await _context.Users
+                        .Where(u => !string.IsNullOrEmpty(u.PhoneNumber))
+                        .Select(u => u.PhoneNumber)
+                        .ToListAsync();
+                    break;
+
+                case BroadcastRecipientType.NewsletterSubscribers:
+                    phoneNumbers = await _context.NewsletterSubscribers
+                        .Where(n => n.IsActive && !string.IsNullOrEmpty(n.PhoneNumber))
+                        .Select(n => n.PhoneNumber)
+                        .ToListAsync();
+                    break;
+
+                case BroadcastRecipientType.CustomList:
+                    phoneNumbers = request.PhoneNumbers ?? new List<string>();
+                    break;
+
+                case BroadcastRecipientType.RecentBookers:
+                    var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
+                    phoneNumbers = await _context.BookingRequests
+                        .Where(b => b.CreatedAt >= thirtyDaysAgo && !string.IsNullOrEmpty(b.ContactPhone))
+                        .Select(b => b.ContactPhone)
+                        .Distinct()
+                        .ToListAsync();
+                    break;
+
+                default:
+                    return BadRequest(new { Success = false, Message = "Invalid recipient type" });
+            }
+
+            if (!phoneNumbers.Any())
+            {
+                return BadRequest(new { Success = false, Message = "No recipients found for the specified criteria" });
+            }
+
+            // Add admin signature to message
+            var adminName = User.FindFirst("FullName")?.Value ?? "Admin";
+            var finalMessage = $"{request.Message}\n\n- {adminName}, Global Horizons Travel";
+
+            // Send broadcast SMS
+            var result = await _smsService.SendBroadcastSmsAsync(phoneNumbers, finalMessage);
+
+            // Log the broadcast activity
+            _logger.LogInformation("Broadcast SMS sent by {AdminName} to {RecipientType}: {Successful}/{Total} successful", 
+                adminName, request.RecipientType, result.SuccessfulSends, result.TotalRecipients);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending broadcast SMS");
+            return StatusCode(500, new BroadcastSmsResponse
+            {
+                Success = false,
+                Message = "An error occurred while sending broadcast SMS"
+            });
+        }
+    }
 
 // Additional DTOs for admin operations
 public class UpdateBookingStatusRequest
@@ -661,4 +860,19 @@ public class UpdatePricingRequest
 public class AddNoteRequest
 {
     public string Note { get; set; } = string.Empty;
+}
+
+public class BroadcastSmsRequest
+{
+    public string Message { get; set; } = string.Empty;
+    public BroadcastRecipientType RecipientType { get; set; }
+    public List<string>? PhoneNumbers { get; set; }
+}
+
+public enum BroadcastRecipientType
+{
+    AllUsers,
+    NewsletterSubscribers,
+    CustomList,
+    RecentBookers
 } 

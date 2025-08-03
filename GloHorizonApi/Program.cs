@@ -1,7 +1,10 @@
 using System.Reflection;
 using System.Text;
+using Akka.Actor;
+using GloHorizonApi.Actors;
 using GloHorizonApi.Data;
 using GloHorizonApi.Extensions;
+using GloHorizonApi.Services;
 using GloHorizonApi.Services.Interfaces;
 using GloHorizonApi.Services.Providers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -48,9 +51,9 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<IPayStackPaymentService, PayStackPaymentService>();
 builder.Services.AddScoped<JwtTokenGenerator>();
 
-// Register notification services
-builder.Services.AddScoped<ISmsService, MnotifySmsService>();
-builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+// Register notification services as singleton for actor usage
+builder.Services.AddSingleton<ISmsService, MnotifySmsService>();
+builder.Services.AddSingleton<IEmailService, ResendEmailService>();
 
 // Register OTP service (Database only)
 builder.Services.AddScoped<IOtpService, DatabaseOtpService>();
@@ -65,8 +68,44 @@ builder.Services.AddScoped<IImageUploadService, SupabaseImageUploadService>();
 // Register OTP cleanup service
 builder.Services.AddHostedService<OtpCleanupService>();
 
-// Configure Akka.NET actor system
-builder.Services.AddActorSystem("glohorizon-actor-system");
+// Configure Akka.NET actor system with dependency injection
+builder.Services.AddSingleton<ActorSystem>(provider =>
+{
+    var actorSystem = ActorSystem.Create("glohorizon-actor-system");
+    return actorSystem;
+});
+
+// Create dedicated instances for actors (singleton lifetime to avoid scope issues)
+builder.Services.AddSingleton<ActorNotificationServices>(provider =>
+{
+    return new ActorNotificationServices(
+        provider.GetRequiredService<ISmsService>(),
+        provider.GetRequiredService<IEmailService>(),
+        provider.GetRequiredService<IConfiguration>(),
+        provider.GetRequiredService<ILogger<QuoteNotificationActor>>()
+    );
+});
+
+// Create the notification actors once at startup
+builder.Services.AddSingleton<IActorRef>(provider =>
+{
+    var actorSystem = provider.GetRequiredService<ActorSystem>();
+    var notificationServices = provider.GetRequiredService<ActorNotificationServices>();
+    
+    // Create the quote notification actor
+    var quoteActor = actorSystem.ActorOf(QuoteNotificationActor.Props(notificationServices), "quote-notification-actor");
+    
+    // Create the booking notification actor
+    actorSystem.ActorOf(BookingNotificationActor.Props(
+        notificationServices.SmsService,
+        notificationServices.EmailService,
+        notificationServices.Configuration,
+        provider.GetRequiredService<ILogger<BookingNotificationActor>>()
+    ), "booking-notification-actor");
+    
+    // Return the quote actor ref for DI (the main one being used)
+    return quoteActor;
+});
 
 // Configure JWT Authentication
 builder.Configuration
@@ -144,12 +183,46 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     
-    // Apply pending migrations
-    await dbContext.Database.MigrateAsync();
-    
-    // Seed the database with initial data
-    await DatabaseSeeder.SeedAdminAsync(dbContext);
+    try
+    {
+        logger.LogInformation("🔄 Checking for pending migrations...");
+        var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
+        
+        if (pendingMigrations.Any())
+        {
+            logger.LogInformation($"📋 Found {pendingMigrations.Count()} pending migrations: {string.Join(", ", pendingMigrations)}");
+            
+            // Apply pending migrations with error handling
+            logger.LogInformation("🚀 Applying database migrations...");
+            try
+            {
+                await dbContext.Database.MigrateAsync();
+                logger.LogInformation("✅ Database migrations applied successfully!");
+            }
+            catch (Exception migrationEx)
+            {
+                logger.LogWarning(migrationEx, "⚠️ Migration warning (continuing anyway): {Message}", migrationEx.Message);
+                // Continue execution - don't fail startup due to migration conflicts
+            }
+        }
+        else
+        {
+            logger.LogInformation("✅ Database is up to date - no pending migrations");
+        }
+        
+        // Seed the database with initial data
+        logger.LogInformation("🌱 Seeding admin data...");
+        await DatabaseSeeder.SeedAdminAsync(dbContext);
+        logger.LogInformation("✅ Admin data seeded successfully!");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "❌ Error during database migration/seeding");
+        logger.LogWarning("⚠️ Continuing startup despite database issues - API may have limited functionality");
+        // Don't re-throw - allow startup to continue
+    }
 }
 
 // Configure the HTTP request pipeline.

@@ -56,20 +56,20 @@ public class BookingRequest
     // Urgency level
     public UrgencyLevel Urgency { get; set; } = UrgencyLevel.Standard;
     
-    // JSON fields for service-specific data
-    [Column(TypeName = "jsonb")]
+    // JSON fields for service-specific data (using TEXT for better compatibility)
+    [Column(TypeName = "text")]
     public string? FlightDetails { get; set; }
     
-    [Column(TypeName = "jsonb")]
+    [Column(TypeName = "text")]
     public string? HotelDetails { get; set; }
     
-    [Column(TypeName = "jsonb")]
+    [Column(TypeName = "text")]
     public string? TourDetails { get; set; }
     
-    [Column(TypeName = "jsonb")]
+    [Column(TypeName = "text")]
     public string? VisaDetails { get; set; }
     
-    [Column(TypeName = "jsonb")]
+    [Column(TypeName = "text")]
     public string? PackageDetails { get; set; }
     
     // Navigation properties
@@ -104,7 +104,7 @@ public enum BookingStatus
 
 public enum UrgencyLevel
 {
-    Standard = 1,
-    Urgent = 2,
-    Emergency = 3
+    Standard = 0,
+    Urgent = 1,
+    Emergency = 2
 } 

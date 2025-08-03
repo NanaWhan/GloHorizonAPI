@@ -150,9 +150,9 @@ public class BookingController : ControllerBase
         }
     }
 
-    // 📋 GET USER'S BOOKINGS
+    // 📋 GET USER'S BOOKINGS (Enhanced with pagination and filtering)
     [HttpGet("my-bookings")]
-    public async Task<ActionResult<BookingListResponse>> GetMyBookings()
+    public async Task<ActionResult<BookingListResponse>> GetMyBookings([FromQuery] BookingFilterDto filter)
     {
         try
         {
@@ -162,19 +162,58 @@ public class BookingController : ControllerBase
                 return Unauthorized(new BookingListResponse { Success = false, Message = "Invalid authentication token" });
             }
 
-            var bookings = await _context.BookingRequests
+            var query = _context.BookingRequests
                 .Include(b => b.StatusHistory)
                 .Include(b => b.Documents)
-                .Where(b => b.UserId == userId)
+                .Where(b => b.UserId == userId);
+
+            // Apply filters
+            if (filter.Status.HasValue)
+                query = query.Where(b => b.Status == filter.Status.Value);
+
+            if (filter.ServiceType.HasValue)
+                query = query.Where(b => b.ServiceType == filter.ServiceType.Value);
+
+            if (filter.Urgency.HasValue)
+                query = query.Where(b => b.Urgency == filter.Urgency.Value);
+
+            if (filter.FromDate.HasValue)
+                query = query.Where(b => b.CreatedAt >= filter.FromDate.Value);
+
+            if (filter.ToDate.HasValue)
+                query = query.Where(b => b.CreatedAt <= filter.ToDate.Value);
+
+            if (!string.IsNullOrEmpty(filter.SearchTerm))
+            {
+                var searchTerm = filter.SearchTerm.ToLower();
+                query = query.Where(b => 
+                    b.ReferenceNumber.ToLower().Contains(searchTerm) ||
+                    (b.Destination != null && b.Destination.ToLower().Contains(searchTerm)) ||
+                    (b.SpecialRequests != null && b.SpecialRequests.ToLower().Contains(searchTerm))
+                );
+            }
+
+            // Get total count before pagination
+            var totalCount = await query.CountAsync();
+
+            // Apply pagination
+            var bookings = await query
                 .OrderByDescending(b => b.CreatedAt)
+                .Skip((filter.PageNumber - 1) * filter.PageSize)
+                .Take(filter.PageSize)
                 .ToListAsync();
+
+            var totalPages = (int)Math.Ceiling((double)totalCount / filter.PageSize);
 
             return Ok(new BookingListResponse
             {
                 Success = true,
                 Message = "Bookings retrieved successfully",
                 Bookings = bookings.Select(MapToTrackingDto).ToList(),
-                TotalCount = bookings.Count
+                TotalCount = totalCount,
+                PageNumber = filter.PageNumber,
+                PageSize = filter.PageSize,
+                TotalPages = totalPages
             });
         }
         catch (Exception ex)
@@ -246,11 +285,12 @@ public class BookingController : ControllerBase
             };
 
             _context.BookingRequests.Add(booking);
+            await _context.SaveChangesAsync(); // Save booking first to get the ID
 
-            // Add initial status history
+            // Add initial status history after booking is saved
             var statusHistory = new BookingStatusHistory
             {
-                BookingRequestId = booking.Id,
+                BookingRequestId = booking.Id, // Now booking.Id has a value
                 FromStatus = BookingStatus.Submitted,
                 ToStatus = BookingStatus.Submitted,
                 Notes = $"{serviceType} booking request submitted",
@@ -259,10 +299,10 @@ public class BookingController : ControllerBase
             };
 
             _context.BookingStatusHistories.Add(statusHistory);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(); // Save status history
 
-            // Send notifications
-            await SendBookingNotifications(booking, user);
+            // Temporarily disable notifications to isolate the issue
+            _logger.LogInformation("Booking created successfully, skipping notifications for debugging");
 
             return Ok(new BookingSubmissionResponse
             {
@@ -274,11 +314,16 @@ public class BookingController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error submitting {ServiceType} booking", serviceType);
+            _logger.LogError(ex, "Error submitting {ServiceType} booking: {ErrorMessage} | StackTrace: {StackTrace}", 
+                serviceType, ex.Message, ex.StackTrace);
+            
+            // More detailed error for development
+            var errorMessage = $"Error submitting {serviceType} booking: {ex.Message}";
+                
             return StatusCode(500, new BookingSubmissionResponse
             {
                 Success = false,
-                Message = $"Error submitting {serviceType} booking request"
+                Message = errorMessage
             });
         }
     }

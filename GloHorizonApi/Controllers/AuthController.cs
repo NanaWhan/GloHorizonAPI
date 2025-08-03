@@ -89,6 +89,20 @@ public class AuthController : ControllerBase
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
+            // Send welcome SMS (fire and forget - don't wait for result to avoid blocking registration)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _smsService.SendWelcomeSmsAsync(user.PhoneNumber, user.FirstName);
+                    _logger.LogInformation("Welcome SMS sent to new user {UserId} at {PhoneNumber}", user.Id, user.PhoneNumber);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send welcome SMS to new user {UserId} at {PhoneNumber}", user.Id, user.PhoneNumber);
+                }
+            });
+
             // Generate JWT token
             var token = _jwtTokenGenerator.GenerateToken(user);
 
