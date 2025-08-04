@@ -419,30 +419,7 @@ public class QuoteController : ControllerBase
             _notificationActor.Tell(message);
             _logger.LogInformation($"🚀 CONTROLLER: Quote notification message sent to actor for: {quote.ReferenceNumber}");
             
-            // BACKUP: Send direct SMS notifications to ensure delivery
-            try
-            {
-                _logger.LogInformation($"🔄 BACKUP: Sending direct SMS notifications for {quote.ReferenceNumber}");
-                
-                // Send customer SMS
-                var serviceTypeName = quote.ServiceType.ToString().Replace("CompletePackage", "Complete Package");
-                var customerMsg = $"Hello {contactName ?? "Valued Customer"}! Your {serviceTypeName} quote request ({quote.ReferenceNumber}) has been received. We'll respond within 24hrs. Thank you for choosing Global Horizons Travel! 🌍";
-                var customerSmsResult = await _smsService.SendSmsAsync(contactPhone, customerMsg);
-                _logger.LogInformation($"🔄 BACKUP Customer SMS: Success={customerSmsResult.Success}, Error={customerSmsResult.Error}");
-                
-                // Send admin SMS
-                var adminPhones = new[] { "0205078908", "0240464248" };
-                foreach (var adminPhone in adminPhones)
-                {
-                    var adminMsg = $"NEW QUOTE: {contactName ?? "Guest"} requests {serviceTypeName} quote ({quote.ReferenceNumber}). Please respond within 24hrs! 🌍";
-                    var adminSmsResult = await _smsService.SendSmsAsync(adminPhone, adminMsg);
-                    _logger.LogInformation($"🔄 BACKUP Admin SMS to {adminPhone}: Success={adminSmsResult.Success}, Error={adminSmsResult.Error}");
-                }
-            }
-            catch (Exception backupEx)
-            {
-                _logger.LogError(backupEx, "BACKUP SMS notifications failed");
-            }
+            // NOTE: Removed backup SMS to prevent duplicates - Actor handles all notifications
         }
         catch (Exception ex)
         {
