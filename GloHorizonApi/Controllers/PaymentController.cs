@@ -188,11 +188,11 @@ public class PaymentController : ControllerBase
         {
             _logger.LogInformation("Payment callback received for reference: {Reference}", reference);
 
+            var frontendBaseUrl = GetFrontendBaseUrl();
+
             if (string.IsNullOrEmpty(reference))
             {
                 _logger.LogWarning("Payment callback received without reference");
-                // Redirect to error page
-                var frontendBaseUrl = GetFrontendBaseUrl();
                 return Redirect($"{frontendBaseUrl}/payment/error?reason=missing-reference");
             }
 
@@ -202,11 +202,8 @@ public class PaymentController : ControllerBase
             if (verification == null || !verification.Status)
             {
                 _logger.LogWarning("Payment verification failed for reference: {Reference}", reference);
-                var frontendBaseUrl = GetFrontendBaseUrl();
                 return Redirect($"{frontendBaseUrl}/payment/error?ref={reference}&reason=verification-failed");
             }
-
-            var frontendBaseUrl = GetFrontendBaseUrl();
 
             if (verification.Data.Status == "success")
             {
@@ -233,7 +230,6 @@ public class PaymentController : ControllerBase
                 _logger.LogWarning("Payment verification failed or payment was unsuccessful for reference: {Reference}", reference);
                 
                 // Redirect to failure page
-                var frontendBaseUrl = GetFrontendBaseUrl();
                 return Redirect($"{frontendBaseUrl}/payment/failed?ref={reference}&reason=payment-failed");
             }
         }
@@ -241,8 +237,8 @@ public class PaymentController : ControllerBase
         {
             _logger.LogError(ex, "Error processing payment callback for reference: {Reference}", reference);
             // Redirect to error page
-            var frontendBaseUrl = GetFrontendBaseUrl();
-            return Redirect($"{frontendBaseUrl}/payment/error?reason=server-error&ref={reference}");
+            var errorFrontendUrl = GetFrontendBaseUrl();
+            return Redirect($"{errorFrontendUrl}/payment/error?reason=server-error&ref={reference}");
         }
     }
 
