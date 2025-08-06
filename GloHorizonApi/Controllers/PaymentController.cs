@@ -196,29 +196,37 @@ public class PaymentController : ControllerBase
                 return Redirect($"{frontendBaseUrl}/payment/error?reason=missing-reference");
             }
 
-            // Find the booking
-            var booking = await _context.BookingRequests
-                .Include(b => b.User)
-                .FirstOrDefaultAsync(b => b.ReferenceNumber == reference);
-
-            if (booking == null)
-            {
-                _logger.LogWarning("Booking not found for reference: {Reference}", reference);
-                // Redirect to error page
-                var frontendBaseUrl = GetFrontendBaseUrl();
-                return Redirect($"{frontendBaseUrl}/payment/error?reason=booking-not-found&ref={reference}");
-            }
-
-            // Verify payment with PayStack
+            // Verify payment with PayStack first
             var verification = await _payStackService.VerifyTransactionAsync(reference);
 
-            if (verification != null && verification.Status && verification.Data.Status == "success")
+            if (verification == null || !verification.Status)
+            {
+                _logger.LogWarning("Payment verification failed for reference: {Reference}", reference);
+                var frontendBaseUrl = GetFrontendBaseUrl();
+                return Redirect($"{frontendBaseUrl}/payment/error?ref={reference}&reason=verification-failed");
+            }
+
+            var frontendBaseUrl = GetFrontendBaseUrl();
+
+            if (verification.Data.Status == "success")
             {
                 _logger.LogInformation("Payment successful for reference: {Reference}", reference);
-                
-                // Redirect to success page with booking details
-                var frontendBaseUrl = GetFrontendBaseUrl();
-                return Redirect($"{frontendBaseUrl}/payment/success?ref={reference}&service={booking.ServiceType}&customer={Uri.EscapeDataString(booking.User.FullName)}");
+
+                // Try to find related booking (optional - payment might be standalone)
+                var booking = await _context.BookingRequests
+                    .Include(b => b.User)
+                    .FirstOrDefaultAsync(b => b.ReferenceNumber == reference);
+
+                if (booking != null)
+                {
+                    // Payment is linked to a booking - redirect with booking details
+                    return Redirect($"{frontendBaseUrl}/payment/success?ref={reference}&type=booking&service={booking.ServiceType}&customer={Uri.EscapeDataString(booking.User.FullName)}&amount={verification.Data.Amount / 100}");
+                }
+                else
+                {
+                    // Standalone payment - redirect with payment details only
+                    return Redirect($"{frontendBaseUrl}/payment/success?ref={reference}&type=payment&amount={verification.Data.Amount / 100}&customer={Uri.EscapeDataString(verification.Data.Customer.Email)}");
+                }
             }
             else
             {
@@ -418,6 +426,64 @@ public class PaymentController : ControllerBase
                 Success = false, 
                 Message = "Internal server error during payment verification" 
             });
+        }
+    }
+
+    /// <summary>
+    /// Test callback endpoint - simulates PayStack callback for testing
+    /// </summary>
+    [HttpGet("test-callback")]
+    public async Task<IActionResult> TestCallback([FromQuery] string reference, [FromQuery] string status = "success")
+    {
+        try
+        {
+            _logger.LogInformation("Test callback triggered for reference: {Reference} with status: {Status}", reference, status);
+
+            if (string.IsNullOrEmpty(reference))
+            {
+                return BadRequest(new { Success = false, Message = "Reference is required" });
+            }
+
+            // Simulate PayStack callback by redirecting to our actual callback endpoint
+            var callbackUrl = $"{Request.Scheme}://{Request.Host}/api/payment/callback?reference={reference}&trxref={reference}&status={status}";
+            
+            _logger.LogInformation("Redirecting to callback URL: {CallbackUrl}", callbackUrl);
+            
+            return Redirect(callbackUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in test callback for reference: {Reference}", reference);
+            return StatusCode(500, new { Success = false, Message = "Internal server error" });
+        }
+    }
+
+    /// <summary>
+    /// Get callback configuration for frontend
+    /// </summary>
+    [HttpGet("callback-config")]
+    public IActionResult GetCallbackConfig()
+    {
+        try
+        {
+            var config = new
+            {
+                CallbackUrl = $"{Request.Scheme}://{Request.Host}/api/payment/callback",
+                WebhookUrl = $"{Request.Scheme}://{Request.Host}/api/payment/webhook",
+                FrontendUrls = new
+                {
+                    Success = $"{GetFrontendBaseUrl()}/payment/success",
+                    Failed = $"{GetFrontendBaseUrl()}/payment/failed",
+                    Error = $"{GetFrontendBaseUrl()}/payment/error"
+                }
+            };
+
+            return Ok(new { Success = true, Data = config });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting callback configuration");
+            return StatusCode(500, new { Success = false, Message = "Internal server error" });
         }
     }
 }
