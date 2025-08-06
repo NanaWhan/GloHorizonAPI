@@ -9,11 +9,10 @@ public class BookingRequest
     public int Id { get; set; }
     
     [Required]
-    [MaxLength(20)]
+    [MaxLength(50)]
     public string ReferenceNumber { get; set; } = string.Empty;
     
-    [Required]
-    public string UserId { get; set; } = string.Empty;
+    public string? UserId { get; set; }
     
     [Required]
     public BookingType ServiceType { get; set; } // Updated enum name
@@ -56,20 +55,20 @@ public class BookingRequest
     // Urgency level
     public UrgencyLevel Urgency { get; set; } = UrgencyLevel.Standard;
     
-    // JSON fields for service-specific data (using TEXT for better compatibility)
-    [Column(TypeName = "text")]
+    // JSON fields for service-specific data (using JSONB for PostgreSQL)
+    [Column(TypeName = "jsonb")]
     public string? FlightDetails { get; set; }
     
-    [Column(TypeName = "text")]
+    [Column(TypeName = "jsonb")]
     public string? HotelDetails { get; set; }
     
-    [Column(TypeName = "text")]
+    [Column(TypeName = "jsonb")]
     public string? TourDetails { get; set; }
     
-    [Column(TypeName = "text")]
+    [Column(TypeName = "jsonb")]
     public string? VisaDetails { get; set; }
     
-    [Column(TypeName = "text")]
+    [Column(TypeName = "jsonb")]
     public string? PackageDetails { get; set; }
     
     // Navigation properties

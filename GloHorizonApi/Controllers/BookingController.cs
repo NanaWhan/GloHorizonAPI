@@ -301,8 +301,9 @@ public class BookingController : ControllerBase
             _context.BookingStatusHistories.Add(statusHistory);
             await _context.SaveChangesAsync(); // Save status history
 
-            // Temporarily disable notifications to isolate the issue
-            _logger.LogInformation("Booking created successfully, skipping notifications for debugging");
+            // Send booking notifications
+            await SendBookingNotifications(booking, user);
+            _logger.LogInformation("Booking created successfully with reference: {ReferenceNumber}", referenceNumber);
 
             return Ok(new BookingSubmissionResponse
             {
@@ -317,8 +318,21 @@ public class BookingController : ControllerBase
             _logger.LogError(ex, "Error submitting {ServiceType} booking: {ErrorMessage} | StackTrace: {StackTrace}", 
                 serviceType, ex.Message, ex.StackTrace);
             
+            // Log inner exception details for database errors
+            var innerException = ex.InnerException;
+            if (innerException != null)
+            {
+                _logger.LogError("Inner Exception: {InnerMessage}", innerException.Message);
+                if (innerException.InnerException != null)
+                {
+                    _logger.LogError("Nested Inner Exception: {NestedMessage}", innerException.InnerException.Message);
+                }
+            }
+            
             // More detailed error for development
-            var errorMessage = $"Error submitting {serviceType} booking: {ex.Message}";
+            var errorMessage = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development" 
+                ? $"Error submitting {serviceType} booking: {ex.Message}. Inner: {innerException?.Message}"
+                : $"Error submitting {serviceType} booking";
                 
             return StatusCode(500, new BookingSubmissionResponse
             {

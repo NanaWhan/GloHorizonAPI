@@ -34,7 +34,8 @@ public class ApplicationDbContext : DbContext
             .HasOne(b => b.User)
             .WithMany(u => u.BookingRequests)
             .HasForeignKey(b => b.UserId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
 
         modelBuilder.Entity<BookingStatusHistory>()
             .HasOne(h => h.BookingRequest)

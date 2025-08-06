@@ -57,7 +57,7 @@ public class PayStackPaymentService : IPayStackPaymentService
             {
                 Currency = "GHS",
                 Email = user.Email,
-                Channels = new[] { "mobile_money", "card" },
+                Channels = new[] { "mobile_money" }, // Prioritize mobile money for better UX
                 AmountInKobo = decimal.ToInt32(ticketPrice),
                 Reference = request.ClientReference,
                 CallbackUrl = callbackUrl

@@ -239,6 +239,93 @@ public class PaymentController : ControllerBase
     }
 
     /// <summary>
+    /// Initialize a payment (create payment link)
+    /// </summary>
+    [HttpPost("initialize")]
+    public async Task<IActionResult> InitializePayment([FromBody] PaymentInitializeRequest request)
+    {
+        try
+        {
+            _logger.LogInformation("Payment initialization requested for amount: {Amount}, reference: {Reference}", 
+                request.Amount, request.ClientReference);
+
+            // Clear model state to avoid validation issues
+            ModelState.Clear();
+
+            if (request.Amount <= 0)
+            {
+                return BadRequest(new { Success = false, Message = "Amount must be greater than 0" });
+            }
+
+            if (string.IsNullOrEmpty(request.ClientReference))
+            {
+                return BadRequest(new { Success = false, Message = "Client reference is required" });
+            }
+
+            // Get user from token
+            var userId = User.FindFirst("Id")?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new { Success = false, Message = "Invalid authentication token" });
+            }
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                return Unauthorized(new { Success = false, Message = "User not found" });
+            }
+
+            // Create generic payment request
+            var paymentRequest = new Models.Dtos.Payment.GenericPaymentRequest
+            {
+                Amount = request.Amount,
+                ClientReference = request.ClientReference,
+                TicketName = request.TicketName,
+                User = user
+            };
+
+            // Create payment link using PayStack service
+            var paymentResult = await _payStackService.CreatePayLink(paymentRequest);
+
+            if (paymentResult.Status)
+            {
+                _logger.LogInformation("Payment link created successfully for reference: {Reference}", request.ClientReference);
+                
+                return Ok(new
+                {
+                    Success = true,
+                    Message = "Payment link created successfully",
+                    Data = new
+                    {
+                        AuthorizationUrl = paymentResult.Data?.AuthorizationUrl,
+                        Reference = paymentResult.Data?.Reference,
+                        Amount = request.Amount,
+                        AccessCode = paymentResult.Data?.AccessCode
+                    }
+                });
+            }
+            else
+            {
+                _logger.LogError("Failed to create payment link: {Message}", paymentResult.Message);
+                return BadRequest(new 
+                { 
+                    Success = false, 
+                    Message = paymentResult.Message ?? "Failed to create payment link" 
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error initializing payment for reference: {Reference}", request.ClientReference);
+            return StatusCode(500, new 
+            { 
+                Success = false, 
+                Message = "Internal server error during payment initialization" 
+            });
+        }
+    }
+
+    /// <summary>
     /// Manual payment verification endpoint
     /// </summary>
     [HttpPost("verify/{reference}")]
@@ -348,4 +435,11 @@ public class PayStackWebhookData
     public string Status { get; set; } = string.Empty;
     public decimal Amount { get; set; }
     public string Currency { get; set; } = string.Empty;
+}
+
+public class PaymentInitializeRequest
+{
+    public decimal Amount { get; set; }
+    public string ClientReference { get; set; } = string.Empty;
+    public string TicketName { get; set; } = string.Empty;
 } 
