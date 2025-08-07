@@ -25,7 +25,7 @@ public class ResendEmailService : IEmailService
         try
         {
             var apiKey = _configuration.GetValue<string>("ResendSettings:ApiKey");
-            var fromEmail = _configuration.GetValue<string>("ResendSettings:FromEmail") ?? "noreply@globalhorizonstravel.com";
+            var fromEmail = _configuration.GetValue<string>("ResendSettings:FromEmail") ?? "info@glohorizonsgh.com";
             var fromName = _configuration.GetValue<string>("ResendSettings:FromName") ?? "Global Horizons Travel";
 
             if (string.IsNullOrEmpty(apiKey))
@@ -57,7 +57,7 @@ public class ResendEmailService : IEmailService
 
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("Email sent successfully to {ToEmail} via Resend", toEmail);
+                _logger.LogInformation("✅ Email sent successfully to {ToEmail} via Resend", toEmail);
                 
                 return new EmailResponse
                 {
@@ -67,7 +67,7 @@ public class ResendEmailService : IEmailService
             }
             else
             {
-                _logger.LogError("Failed to send email via Resend - Status: {StatusCode}, Response: {Content}", 
+                _logger.LogError("❌ Failed to send email via Resend - Status: {StatusCode}, Response: {Content}", 
                     response.StatusCode, responseContent);
                 
                 return new EmailResponse
@@ -79,13 +79,32 @@ public class ResendEmailService : IEmailService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error sending email via Resend to {ToEmail}", toEmail);
+            _logger.LogError(ex, "❌ Error sending email via Resend to {ToEmail}", toEmail);
             return new EmailResponse
             {
                 Success = false,
                 Error = $"Email error: {ex.Message}"
             };
         }
+    }
+
+    private string ConvertHtmlToText(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return string.Empty;
+        
+        // Simple HTML to text conversion
+        var text = html
+            .Replace("<br>", "\n")
+            .Replace("<br/>", "\n")
+            .Replace("<br />", "\n")
+            .Replace("</p>", "\n")
+            .Replace("</div>", "\n")
+            .Replace("</h1>", "\n")
+            .Replace("</h2>", "\n")
+            .Replace("</h3>", "\n");
+        
+        // Remove HTML tags using regex
+        return System.Text.RegularExpressions.Regex.Replace(text, "<.*?>", "").Trim();
     }
 
     public async Task<EmailResponse> SendBookingConfirmationAsync(string toEmail, string customerName, string referenceNumber, string serviceType)

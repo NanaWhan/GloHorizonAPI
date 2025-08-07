@@ -1,0 +1,31 @@
+### Test Resend Email Service Directly
+POST http://localhost:5080/api/auth/test-email
+Content-Type: application/json
+
+{
+  "email": "your-email@example.com",
+  "message": "Testing Resend email service with info@glohorizonsgh.com"
+}
+
+### Alternative - Test via Quote Request (triggers Resend email)
+POST http://localhost:5080/api/quote/hotel
+Content-Type: application/json
+
+{
+  "hotelDetails": {
+    "destination": "Accra",
+    "checkInDate": "2024-12-15T00:00:00Z",
+    "checkOutDate": "2024-12-20T00:00:00Z",
+    "rooms": 1,
+    "adultGuests": 2,
+    "childGuests": 0,
+    "roomType": "standard",
+    "starRating": "4-star",
+    "amenities": ["pool", "wifi"]
+  },
+  "contactEmail": "your-email@example.com",
+  "contactPhone": "+233123456789",
+  "contactName": "Test Customer",
+  "specialRequests": "Testing Resend email integration",
+  "urgency": 1
+} 

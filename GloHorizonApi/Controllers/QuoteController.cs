@@ -252,7 +252,7 @@ public class QuoteController : ControllerBase
             var userId = User.FindFirst("Id")?.Value;
             if (string.IsNullOrEmpty(userId))
             {
-                return Unauthorized(new QuoteListResponse { Success = false, Message = "Invalid authentication token" });
+                return Unauthorized(new { Success = false, Message = "Invalid authentication token" });
             }
 
             var quotes = await _context.QuoteRequests
@@ -261,7 +261,7 @@ public class QuoteController : ControllerBase
                 .OrderByDescending(q => q.CreatedAt)
                 .ToListAsync();
 
-            return Ok(new QuoteListResponse
+            return Ok(new 
             {
                 Success = true,
                 Message = "Quotes retrieved successfully",
@@ -272,7 +272,7 @@ public class QuoteController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving user quotes");
-            return StatusCode(500, new QuoteListResponse { Success = false, Message = "Error retrieving quotes" });
+            return StatusCode(500, new { Success = false, Message = "Error retrieving quotes" });
         }
     }
 

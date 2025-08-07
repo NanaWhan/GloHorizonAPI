@@ -51,6 +51,8 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<IPayStackPaymentService, PayStackPaymentService>();
 builder.Services.AddScoped<JwtTokenGenerator>();
 
+// Resend client setup is handled in the ResendEmailService directly
+
 // Register notification services as singleton for actor usage
 builder.Services.AddSingleton<ISmsService, MnotifySmsService>();
 builder.Services.AddSingleton<IEmailService, ResendEmailService>();
@@ -216,6 +218,10 @@ using (var scope = app.Services.CreateScope())
         logger.LogInformation("🌱 Seeding admin data...");
         await DatabaseSeeder.SeedAdminAsync(dbContext);
         logger.LogInformation("✅ Admin data seeded successfully!");
+        
+        logger.LogInformation("🌱 Seeding travel packages...");
+        await DatabaseSeeder.SeedTravelPackagesAsync(dbContext);
+        logger.LogInformation("✅ Travel packages seeded successfully!");
     }
     catch (Exception ex)
     {

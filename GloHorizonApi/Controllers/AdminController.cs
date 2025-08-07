@@ -769,6 +769,338 @@ public class AdminController : ControllerBase
         }
     }
 
+    // ===============================
+    // QUOTE MANAGEMENT ENDPOINTS  
+    // ===============================
+
+    [HttpGet("quotes")]
+    [Authorize]
+    public async Task<ActionResult<QuoteListResponse>> GetAllQuotes([FromQuery] QuoteFilterDto filter)
+    {
+        try
+        {
+            var query = _context.QuoteRequests
+                .Include(q => q.StatusHistory)
+                .AsQueryable();
+
+            // Apply filters
+            if (filter.Status.HasValue)
+                query = query.Where(q => q.Status == filter.Status.Value);
+
+            if (filter.ServiceType.HasValue)
+                query = query.Where(q => q.ServiceType == filter.ServiceType.Value);
+
+            if (filter.Urgency.HasValue)
+                query = query.Where(q => q.Urgency == filter.Urgency.Value);
+
+            if (filter.FromDate.HasValue)
+                query = query.Where(q => q.CreatedAt >= filter.FromDate.Value);
+
+            if (filter.ToDate.HasValue)
+                query = query.Where(q => q.CreatedAt <= filter.ToDate.Value);
+
+            if (!string.IsNullOrEmpty(filter.SearchTerm))
+            {
+                var searchTerm = filter.SearchTerm.ToLower();
+                query = query.Where(q => 
+                    q.ReferenceNumber.ToLower().Contains(searchTerm) ||
+                    q.ContactEmail.ToLower().Contains(searchTerm) ||
+                    q.ContactPhone.Contains(searchTerm) ||
+                    q.ContactName.ToLower().Contains(searchTerm) ||
+                    (q.Destination != null && q.Destination.ToLower().Contains(searchTerm)) ||
+                    (q.SpecialRequests != null && q.SpecialRequests.ToLower().Contains(searchTerm))
+                );
+            }
+
+            // Get total count before pagination
+            var totalCount = await query.CountAsync();
+
+            // Apply pagination
+            var quotes = await query
+                .OrderByDescending(q => q.CreatedAt)
+                .Skip((filter.PageNumber - 1) * filter.PageSize)
+                .Take(filter.PageSize)
+                .Select(q => new AdminQuoteDto
+                {
+                    Id = q.Id,
+                    ReferenceNumber = q.ReferenceNumber,
+                    ServiceType = q.ServiceType,
+                    Status = q.Status,
+                    Urgency = q.Urgency,
+                    CreatedAt = q.CreatedAt,
+                    ContactEmail = q.ContactEmail,
+                    ContactPhone = q.ContactPhone,
+                    ContactName = q.ContactName,
+                    Destination = q.Destination,
+                    SpecialRequests = q.SpecialRequests,
+                    AdminNotes = q.AdminNotes,
+                    EstimatedPrice = q.QuotedAmount,
+                    Currency = q.Currency
+                })
+                .ToListAsync();
+
+            var totalPages = (int)Math.Ceiling((double)totalCount / filter.PageSize);
+
+            return Ok(new QuoteListResponse
+            {
+                Success = true,
+                Message = "Quotes retrieved successfully",
+                Quotes = quotes,
+                TotalCount = totalCount,
+                PageNumber = filter.PageNumber,
+                PageSize = filter.PageSize,
+                TotalPages = totalPages
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving quotes for admin");
+            return StatusCode(500, new QuoteListResponse { Success = false, Message = "An error occurred retrieving quotes" });
+        }
+    }
+
+    [HttpGet("quotes/{id}")]
+    [Authorize]
+    public async Task<ActionResult<DetailedQuoteInfo>> GetQuote(int id)
+    {
+        try
+        {
+            var quote = await _context.QuoteRequests
+                .Include(q => q.StatusHistory)
+                .FirstOrDefaultAsync(q => q.Id == id);
+
+            if (quote == null)
+            {
+                return NotFound($"Quote with ID {id} not found");
+            }
+
+            var detailedQuote = new DetailedQuoteInfo
+            {
+                Id = quote.Id,
+                ReferenceNumber = quote.ReferenceNumber,
+                ServiceType = quote.ServiceType,
+                Status = quote.Status,
+                Urgency = quote.Urgency,
+                CreatedAt = quote.CreatedAt,
+                UpdatedAt = quote.UpdatedAt,
+                ContactEmail = quote.ContactEmail,
+                ContactPhone = quote.ContactPhone,
+                ContactName = quote.ContactName,
+                Destination = quote.Destination,
+                SpecialRequests = quote.SpecialRequests,
+                AdminNotes = quote.AdminNotes,
+                EstimatedPrice = quote.QuotedAmount,
+                Currency = quote.Currency,
+                StatusHistory = quote.StatusHistory
+                    .OrderByDescending(h => h.ChangedAt)
+                    .Select(h => new AdminQuoteStatusHistoryInfo
+                    {
+                        FromStatus = h.FromStatus,
+                        ToStatus = h.ToStatus,
+                        Notes = h.Notes,
+                        ChangedBy = h.ChangedBy,
+                        ChangedAt = h.ChangedAt
+                    }).ToList(),
+                QuoteDetails = GetQuoteDetailsAsDictionary(quote)
+            };
+
+            return Ok(detailedQuote);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error retrieving quote details for ID: {id}");
+            return StatusCode(500, "An error occurred retrieving quote details");
+        }
+    }
+
+    [HttpPut("quotes/{id}/status")]
+    [Authorize]
+    public async Task<ActionResult> UpdateQuoteStatus(int id, [FromBody] UpdateQuoteStatusRequest request)
+    {
+        try
+        {
+            var quote = await _context.QuoteRequests
+                .FirstOrDefaultAsync(q => q.Id == id);
+
+            if (quote == null)
+            {
+                return NotFound("Quote not found");
+            }
+
+            var oldStatus = quote.Status;
+            quote.Status = request.NewStatus;
+            quote.UpdatedAt = DateTime.UtcNow;
+            quote.AdminNotes = request.AdminNotes;
+
+            if (request.EstimatedPrice.HasValue)
+                quote.QuotedAmount = request.EstimatedPrice.Value;
+
+            // Add status history
+            var statusHistory = new QuoteStatusHistory
+            {
+                QuoteRequestId = quote.Id,
+                FromStatus = oldStatus,
+                ToStatus = request.NewStatus,
+                Notes = request.Notes,
+                ChangedBy = User.FindFirst("FullName")?.Value ?? "Admin",
+                ChangedAt = DateTime.UtcNow
+            };
+
+            _context.QuoteStatusHistories.Add(statusHistory);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation($"Quote {quote.ReferenceNumber} status updated from {oldStatus} to {request.NewStatus}");
+
+            return Ok(new { Success = true, Message = "Quote status updated successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating quote status");
+            return StatusCode(500, "An error occurred updating quote status");
+        }
+    }
+
+    [HttpPut("quotes/{id}/pricing")]
+    [Authorize]
+    public async Task<ActionResult> UpdateQuotePricing(int id, [FromBody] UpdateQuotePricingRequest request)
+    {
+        try
+        {
+            var quote = await _context.QuoteRequests
+                .FirstOrDefaultAsync(q => q.Id == id);
+
+            if (quote == null)
+            {
+                return NotFound($"Quote with ID {id} not found");
+            }
+
+            var oldEstimatedPrice = quote.QuotedAmount;
+
+            // Update pricing
+            if (request.EstimatedPrice.HasValue)
+                quote.QuotedAmount = request.EstimatedPrice.Value;
+
+            if (!string.IsNullOrEmpty(request.Currency))
+                quote.Currency = request.Currency;
+
+            quote.UpdatedAt = DateTime.UtcNow;
+
+            // Add status history for pricing update
+            var statusHistory = new QuoteStatusHistory
+            {
+                QuoteRequestId = quote.Id,
+                FromStatus = quote.Status,
+                ToStatus = quote.Status, // Status remains same, just pricing updated
+                Notes = $"Pricing updated: {oldEstimatedPrice} → {quote.QuotedAmount} {quote.Currency}. Reason: {request.Notes}",
+                ChangedBy = User.FindFirst("FullName")?.Value ?? "Admin",
+                ChangedAt = DateTime.UtcNow
+            };
+
+            _context.QuoteStatusHistories.Add(statusHistory);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation($"Pricing updated for quote {quote.ReferenceNumber} by {statusHistory.ChangedBy}");
+
+            return Ok(new { 
+                Success = true, 
+                Message = "Quote pricing updated successfully",
+                EstimatedPrice = quote.QuotedAmount,
+                Currency = quote.Currency
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error updating pricing for quote ID: {id}");
+            return StatusCode(500, "An error occurred updating quote pricing");
+        }
+    }
+
+    [HttpPost("quotes/{id}/notes")]
+    [Authorize]
+    public async Task<ActionResult> AddQuoteNote(int id, [FromBody] AddNoteRequest request)
+    {
+        try
+        {
+            var quote = await _context.QuoteRequests
+                .FirstOrDefaultAsync(q => q.Id == id);
+
+            if (quote == null)
+            {
+                return NotFound($"Quote with ID {id} not found");
+            }
+
+            // Append new note to existing admin notes
+            var adminName = User.FindFirst("FullName")?.Value ?? "Admin";
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
+            var newNote = $"[{timestamp}] {adminName}: {request.Note}";
+
+            if (string.IsNullOrEmpty(quote.AdminNotes))
+            {
+                quote.AdminNotes = newNote;
+            }
+            else
+            {
+                quote.AdminNotes += "\n" + newNote;
+            }
+
+            quote.UpdatedAt = DateTime.UtcNow;
+
+            // Add status history for note addition
+            var statusHistory = new QuoteStatusHistory
+            {
+                QuoteRequestId = quote.Id,
+                FromStatus = quote.Status,
+                ToStatus = quote.Status, // Status remains same
+                Notes = $"Admin note added: {request.Note}",
+                ChangedBy = adminName,
+                ChangedAt = DateTime.UtcNow
+            };
+
+            _context.QuoteStatusHistories.Add(statusHistory);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation($"Note added to quote {quote.ReferenceNumber} by {adminName}");
+
+            return Ok(new { 
+                Success = true, 
+                Message = "Note added successfully",
+                AdminNotes = quote.AdminNotes
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error adding note to quote ID: {id}");
+            return StatusCode(500, "An error occurred adding note to quote");
+        }
+    }
+
+    // Helper method to extract quote details as dictionary
+    private Dictionary<string, object> GetQuoteDetailsAsDictionary(QuoteRequest quote)
+    {
+        try
+        {
+            return quote.ServiceType switch
+            {
+                QuoteType.Hotel when !string.IsNullOrEmpty(quote.HotelDetails) =>
+                    JsonSerializer.Deserialize<Dictionary<string, object>>(quote.HotelDetails) ?? new(),
+                QuoteType.Flight when !string.IsNullOrEmpty(quote.FlightDetails) =>
+                    JsonSerializer.Deserialize<Dictionary<string, object>>(quote.FlightDetails) ?? new(),
+                QuoteType.Tour when !string.IsNullOrEmpty(quote.TourDetails) =>
+                    JsonSerializer.Deserialize<Dictionary<string, object>>(quote.TourDetails) ?? new(),
+                QuoteType.Visa when !string.IsNullOrEmpty(quote.VisaDetails) =>
+                    JsonSerializer.Deserialize<Dictionary<string, object>>(quote.VisaDetails) ?? new(),
+                QuoteType.CompletePackage when !string.IsNullOrEmpty(quote.PackageDetails) =>
+                    JsonSerializer.Deserialize<Dictionary<string, object>>(quote.PackageDetails) ?? new(),
+                _ => new Dictionary<string, object>()
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error parsing quote details for quote {ReferenceNumber}", quote.ReferenceNumber);
+            return new Dictionary<string, object>();
+        }
+    }
+
 // Additional DTOs for admin operations
 public class UpdateBookingStatusRequest
 {
@@ -875,4 +1207,91 @@ public enum BroadcastRecipientType
     NewsletterSubscribers,
     CustomList,
     RecentBookers
+}
+
+// Quote Management DTOs
+public class QuoteFilterDto
+{
+    public QuoteStatus? Status { get; set; }
+    public QuoteType? ServiceType { get; set; }
+    public UrgencyLevel? Urgency { get; set; }
+    public DateTime? FromDate { get; set; }
+    public DateTime? ToDate { get; set; }
+    public string? SearchTerm { get; set; }
+    public int PageNumber { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+}
+
+public class QuoteListResponse
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public List<AdminQuoteDto> Quotes { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int PageNumber { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+}
+
+public class AdminQuoteDto
+{
+    public int Id { get; set; }
+    public string ReferenceNumber { get; set; } = string.Empty;
+    public QuoteType ServiceType { get; set; }
+    public QuoteStatus Status { get; set; }
+    public UrgencyLevel Urgency { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string ContactEmail { get; set; } = string.Empty;
+    public string ContactPhone { get; set; } = string.Empty;
+    public string ContactName { get; set; } = string.Empty;
+    public string? Destination { get; set; }
+    public string? SpecialRequests { get; set; }
+    public string? AdminNotes { get; set; }
+    public decimal? EstimatedPrice { get; set; }
+    public string? Currency { get; set; }
+}
+
+public class DetailedQuoteInfo
+{
+    public int Id { get; set; }
+    public string ReferenceNumber { get; set; } = string.Empty;
+    public QuoteType ServiceType { get; set; }
+    public QuoteStatus Status { get; set; }
+    public UrgencyLevel Urgency { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public string ContactEmail { get; set; } = string.Empty;
+    public string ContactPhone { get; set; } = string.Empty;
+    public string ContactName { get; set; } = string.Empty;
+    public string? Destination { get; set; }
+    public string? SpecialRequests { get; set; }
+    public string? AdminNotes { get; set; }
+    public decimal? EstimatedPrice { get; set; }
+    public string? Currency { get; set; }
+    public List<AdminQuoteStatusHistoryInfo> StatusHistory { get; set; } = new();
+    public Dictionary<string, object> QuoteDetails { get; set; } = new();
+}
+
+public class AdminQuoteStatusHistoryInfo
+{
+    public QuoteStatus FromStatus { get; set; }
+    public QuoteStatus ToStatus { get; set; }
+    public string? Notes { get; set; }
+    public string ChangedBy { get; set; } = string.Empty;
+    public DateTime ChangedAt { get; set; }
+}
+
+public class UpdateQuoteStatusRequest
+{
+    public QuoteStatus NewStatus { get; set; }
+    public string? Notes { get; set; }
+    public string? AdminNotes { get; set; }
+    public decimal? EstimatedPrice { get; set; }
+}
+
+public class UpdateQuotePricingRequest
+{
+    public decimal? EstimatedPrice { get; set; }
+    public string? Currency { get; set; }
+    public string? Notes { get; set; }
 } 

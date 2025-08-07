@@ -389,5 +389,66 @@ public class AuthController : ControllerBase
         }
     }
 
+    [HttpPost("test-email")]
+    [AllowAnonymous] // For testing purposes
+    public async Task<ActionResult> TestEmail([FromBody] TestEmailRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(request.Email))
+            {
+                return BadRequest(new { Success = false, Message = "Email is required" });
+            }
+
+            var subject = "Resend Email Test - GloHorizons";
+            var body = $@"
+                <h2>🚀 Resend Email Test Successful!</h2>
+                <p>This is a test email from GloHorizons travel booking system.</p>
+                <p><strong>Sender:</strong> info@glohorizonsgh.com</p>
+                <p><strong>Service:</strong> Resend Email Service</p>
+                <p><strong>Time:</strong> {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>
+                <p><strong>Test Message:</strong> {request.Message ?? "No message provided"}</p>
+                <hr>
+                <p style='color: #666; font-size: 12px;'>
+                    This email was sent from the GloHorizons API for testing purposes.
+                </p>";
+
+            var result = await _emailService.SendEmailAsync(request.Email, subject, body, true);
+
+            if (result.Success)
+            {
+                _logger.LogInformation("✅ Test email sent successfully to {Email} via Resend", request.Email);
+                return Ok(new 
+                { 
+                    Success = true, 
+                    Message = "Test email sent successfully via Resend!",
+                    Recipient = request.Email,
+                    Provider = "Resend",
+                    Sender = "info@glohorizonsgh.com"
+                });
+            }
+            else
+            {
+                _logger.LogError("❌ Failed to send test email: {Error}", result.Error);
+                return StatusCode(500, new 
+                { 
+                    Success = false, 
+                    Message = "Failed to send test email",
+                    Error = result.Error
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in test email endpoint");
+            return StatusCode(500, new 
+            { 
+                Success = false, 
+                Message = "An error occurred while testing email",
+                Error = ex.Message
+            });
+        }
+    }
+
 
 } 
